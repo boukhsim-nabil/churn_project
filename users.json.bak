@@ -1,0 +1,14 @@
+{
+  "orange@orange.com": {
+    "password": "2e4f978a8103397bc9ae98df5b4ea196e195272fa4cc331fc2ef021c441476ef",
+    "company": "orange",
+    "secteur": "\ud83d\udcf1 T\u00e9l\u00e9com",
+    "created_at": "2026-03-29 09:10:39.299514"
+  },
+  "fitnesspark@fit.com": {
+    "password": "d04ee91a02df7bf1c41ff706bc5e423699616433c55856b6959f5158b4a1df5b",
+    "company": "Fitnesspark",
+    "secteur": "\ud83d\udcaa Salle de Sport",
+    "created_at": "2026-03-30 19:34:51.967222"
+  }
+}

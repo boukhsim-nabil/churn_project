@@ -1,0 +1,857 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from data_pipeline import show_pipeline_page, load_user_model
+
+import warnings
+
+
+from auth import show_auth_page
+
+# ── Vérification de la session ──────────────────────────────────
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    show_auth_page()
+    st.stop()  # ← IMPORTANT : arrête tout le reste si pas connecté
+
+# ── L'utilisateur est connecté — on récupère ses infos ──────────
+user_company = st.session_state.get("user_company", "Mon Entreprise")
+user_secteur = st.session_state.get("user_secteur", "📱 Télécom")
+
+warnings.filterwarnings('ignore')
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE CONFIG
+# ══════════════════════════════════════════════════════════════════
+st.set_page_config(
+    page_title="🔮 RetainIQ — Churn Predictor",
+    page_icon="🔮",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={'About': "RetainIQ — Plateforme IA de Prédiction du Churn — Projet Industriel 2024-2025"}
+)
+
+# ══════════════════════════════════════════════════════════════════
+# CSS — original conservé + nouvelles classes ajoutées
+# ══════════════════════════════════════════════════════════════════
+st.markdown("""
+<style>
+    /* ── CSS ORIGINAL ─────────────────────────────────────────── */
+    .main-header {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        padding: 2rem;
+        border-radius: 20px;
+        margin-bottom: 2rem;
+        text-align: center;
+        color: white;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .metric-container {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        text-align: center;
+        color: white;
+        margin: 1rem 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+    }
+    .insight-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        color: white;
+    }
+    .prediction-card {
+        background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        padding: 2rem;
+        border-radius: 20px;
+        text-align: center;
+        margin: 1rem 0;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .stSelectbox > div > div {
+        background-color: #3a3c4a;
+        border-radius: 10px;
+    }
+    h1 { color: #2c3e50; font-weight: 700; }
+    h2, h3 { color: #34495e; font-weight: 600; }
+
+    /* ── NOUVELLES CLASSES ────────────────────────────────────── */
+    .risk-high   { background:#1C0A0A; border:2px solid #EF4444; border-radius:16px; padding:1.5rem; text-align:center; margin:0.5rem 0; }
+    .risk-medium { background:#1C150A; border:2px solid #F59E0B; border-radius:16px; padding:1.5rem; text-align:center; margin:0.5rem 0; }
+    .risk-low    { background:#0A1C0F; border:2px solid #00CC96; border-radius:16px; padding:1.5rem; text-align:center; margin:0.5rem 0; }
+    .section-card {
+        background: #1a1d2e;
+        border: 1px solid #2d3748;
+        border-radius: 12px;
+        padding: 1.2rem;
+        margin: 0.5rem 0;
+    }
+    .alert-box {
+        background: #2D1515;
+        border-left: 4px solid #EF4444;
+        border-radius: 8px;
+        padding: 1rem 1.2rem;
+        margin: 0.5rem 0;
+        color: #FCA5A5;
+    }
+    .chat-user { background:linear-gradient(135deg,#667eea,#764ba2); border-radius:16px 16px 2px 16px; padding:0.8rem 1.2rem; margin:0.5rem 0; color:white; max-width:80%; margin-left:auto; }
+    .chat-bot  { background:#1a1d2e; border:1px solid #2d3748; border-radius:16px 16px 16px 2px; padding:0.8rem 1.2rem; margin:0.5rem 0; color:#CBD5E1; max-width:85%; }
+    .secteur-badge { background:linear-gradient(135deg,#667eea,#764ba2); border-radius:8px; padding:8px 14px; color:white; font-size:0.85rem; font-weight:600; text-align:center; margin-bottom:10px; }
+</style>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════
+# SIDEBAR
+# ══════════════════════════════════════════════════════════════════
+st.sidebar.markdown("""
+<div style='background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+           padding:20px;border-radius:15px;margin-bottom:20px;text-align:center;'>
+    <h2 style='color:white;margin:0;'>🔮 RetainIQ</h2>
+    <p style='color:#e8f4f8;margin:5px 0 0 0;'>Prédiction Intelligente du Churn</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Filtre secteur (NOUVEAU)
+secteur = st.session_state.get("user_secteur", "📱 Télécom")
+
+st.sidebar.markdown(f"""
+<div style='background:#1a1d2e;border:1px solid #2d3748;
+            border-radius:8px;padding:12px;margin-bottom:8px;'>
+    <p style='color:#888;font-size:0.75rem;margin:0;'>🏭 Secteur d'activité</p>
+    <p style='color:#667eea;font-weight:600;margin:6px 0 0 0;
+              font-size:1rem;'>{secteur}</p>
+    <p style='color:#555;font-size:0.72rem;margin:4px 0 0 0;'>
+  
+</div>
+""", unsafe_allow_html=True)
+SECTEUR_CONFIG = {
+    "📱 Télécom":        {"tenure": "Ancienneté (mois)",  "charges": "Forfait mensuel (€)",  "churn_label": "Résiliation"},
+    "💪 Salle de Sport": {"tenure": "Mois d'abonnement",  "charges": "Abonnement (€/mois)",  "churn_label": "Non-renouvellement"},
+    "🛍️ E-commerce":     {"tenure": "Mois client",        "charges": "Panier moyen (€)",     "churn_label": "Inactivité"},
+    "🎓 EdTech":         {"tenure": "Mois inscrit",       "charges": "Abonnement (€/mois)",  "churn_label": "Désinscription"},
+    "☁️ SaaS B2B":       {"tenure": "Mois client",        "charges": "MRR (€)",              "churn_label": "Résiliation"},
+}
+cfg = SECTEUR_CONFIG[secteur]
+
+st.sidebar.markdown("---")
+
+# Navigation (sections originales + nouvelles)
+section = st.sidebar.radio(
+    "🎯 Navigation",
+    [
+        "🏠 Overview",
+        "📊 Visual Analytics",
+        "🔮 AI Prediction",
+        "🌟 Future Scenarios",
+        "⚡ Simulateur What-If",
+        "🚨 Alertes Clients",
+        "🤖 Assistant IA",
+        "📤 Importer mes données",   # ← AJOUTER ICI
+
+    ]
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"<div class='secteur-badge'>Secteur : {secteur}</div>", unsafe_allow_html=True)
+st.sidebar.markdown(f"""
+<div style='background:#1a1d2e;border:1px solid #2d3748;
+            border-radius:8px;padding:12px;margin-bottom:10px;'>
+    <p style='color:#888;font-size:0.75rem;margin:0;'>Connecté en tant que</p>
+    <p style='color:white;font-weight:600;margin:4px 0 0 0;
+              font-size:0.9rem;'>{user_company}</p>
+    <p style='color:#667eea;font-size:0.8rem;margin:2px 0 0 0;'>
+              {user_secteur}</p>
+</div>
+""", unsafe_allow_html=True)
+
+if st.sidebar.button("🚪 Se déconnecter", use_container_width=True):
+    st.session_state.logged_in  = False
+    st.session_state.user_email = ""
+    st.rerun()
+# ══════════════════════════════════════════════════════════════════
+# DONNÉES — identique à l'original
+# ══════════════════════════════════════════════════════════════════
+@st.cache_data
+def load_data():
+    try:
+        df = pd.read_csv("Telco-Customer-Churn.csv")
+        df.drop('customerID', axis=1, inplace=True)
+        df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+        df['TotalCharges'].fillna(df['TotalCharges'].median(), inplace=True)
+        df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
+        df = pd.get_dummies(df, drop_first=True)
+        return df, True
+    except:
+        np.random.seed(42)
+        n_samples = 1000
+        data = {
+            'tenure': np.random.randint(1, 72, n_samples),
+            'MonthlyCharges': np.random.normal(65, 20, n_samples).clip(20, 120),
+            'TotalCharges': np.random.normal(2500, 1500, n_samples).clip(100, 8000),
+            'gender_Male': np.random.choice([0, 1], n_samples),
+            'SeniorCitizen': np.random.choice([0, 1], n_samples, p=[0.8, 0.2]),
+            'Partner_Yes': np.random.choice([0, 1], n_samples),
+            'Dependents_Yes': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
+            'PhoneService_Yes': np.random.choice([0, 1], n_samples, p=[0.1, 0.9]),
+            'InternetService_Fiber_optic': np.random.choice([0, 1], n_samples, p=[0.6, 0.4]),
+            'InternetService_No': np.random.choice([0, 1], n_samples, p=[0.8, 0.2]),
+            'OnlineSecurity_Yes': np.random.choice([0, 1], n_samples),
+            'Contract_One_year': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
+            'Contract_Two_year': np.random.choice([0, 1], n_samples, p=[0.8, 0.2]),
+            'PaperlessBilling_Yes': np.random.choice([0, 1], n_samples, p=[0.4, 0.6]),
+            'PaymentMethod_Electronic_check': np.random.choice([0, 1], n_samples, p=[0.7, 0.3])
+        }
+        df = pd.DataFrame(data)
+        churn_prob = (
+            0.1 +
+            (df['tenure'] < 12) * 0.3 +
+            (df['MonthlyCharges'] > 80) * 0.2 +
+            df['SeniorCitizen'] * 0.15 +
+            (df['Contract_One_year'] == 0) * (df['Contract_Two_year'] == 0) * 0.25 +
+            df['PaymentMethod_Electronic_check'] * 0.1
+        ).clip(0, 0.8)
+        df['Churn'] = np.random.binomial(1, churn_prob, n_samples)
+        return df, False
+
+df, is_real_data = load_data()
+
+# ══════════════════════════════════════════════════════════════════
+# MODÈLE — identique à l'original
+# ══════════════════════════════════════════════════════════════════
+@st.cache_resource
+def train_model(df):
+    X = df.drop("Churn", axis=1)
+    y = df["Churn"]
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+    model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42)
+    model.fit(X_train, y_train)
+    accuracy = model.score(X_test, y_test)
+    return model, X.columns, accuracy
+
+model, feature_names, model_accuracy = train_model(df)
+
+# Scores globaux pour les nouvelles pages
+X_all = df.drop("Churn", axis=1)
+df['ChurnProba'] = model.predict_proba(X_all)[:, 1]
+df['RiskLevel']  = df['ChurnProba'].apply(
+    lambda x: "🔴 Risque Élevé" if x > 0.6 else ("🟡 Risque Modéré" if x > 0.35 else "🟢 Risque Faible")
+)
+
+# ══════════════════════════════════════════════════════════════════
+# FONCTIONS UTILITAIRES (NOUVELLES)
+# ══════════════════════════════════════════════════════════════════
+def risk_gauge(score):
+    if score > 0.6:
+        color, label, css_class = "#EF4444", "RISQUE ÉLEVÉ", "risk-high"
+    elif score > 0.35:
+        color, label, css_class = "#F59E0B", "RISQUE MODÉRÉ", "risk-medium"
+    else:
+        color, label, css_class = "#00CC96", "RISQUE FAIBLE", "risk-low"
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score * 100,
+        number={'suffix': "%", 'font': {'size': 38, 'color': color}},
+        gauge={
+            'axis': {'range': [0, 100], 'tickcolor': '#64748B'},
+            'bar': {'color': color, 'thickness': 0.28},
+            'bgcolor': "#1a1d2e",
+            'bordercolor': "#2d3748",
+            'steps': [
+                {'range': [0, 35],   'color': '#0A1C0F'},
+                {'range': [35, 60],  'color': '#1C150A'},
+                {'range': [60, 100], 'color': '#1C0A0A'},
+            ],
+            'threshold': {'line': {'color': color, 'width': 4}, 'value': score * 100}
+        }
+    ))
+    fig.update_layout(height=220, margin=dict(t=20, b=10, l=20, r=20),
+                      paper_bgcolor='rgba(0,0,0,0)', font={'color': '#CBD5E1'})
+    return fig, label, color, css_class
+
+def get_recommendations(score, tenure, charges):
+    recs = []
+    if score > 0.6:
+        recs.append("🎁 Offrir une remise de 15-20%")
+        recs.append("📞 Appel de rétention dans les 48h")
+        if tenure < 12:
+            recs.append("📋 Proposer un contrat annuel")
+        if charges > 80:
+            recs.append("💰 Étudier un forfait moins cher")
+        if len(recs) < 3:
+            recs.append("🔧 Vérifier les incidents en attente")
+    elif score > 0.35:
+        recs.append("📧 Enquête de satisfaction")
+        recs.append("🎯 Proposer des services complémentaires")
+        recs.append("📊 Surveiller les 30 prochains jours")
+    else:
+        recs.append("✅ Client stable — continuer la qualité")
+        recs.append("📈 Opportunité d'upsell premium")
+        recs.append("⭐ Inviter au programme fidélité")
+    return recs[:3]
+
+def build_input_df(tenure, charges, contract, internet, security):
+    inp = {}
+    for feat in feature_names:
+        inp[feat] = float(df[feat].median()) if df[feat].nunique() > 2 else 0
+    inp['tenure']          = tenure
+    inp['MonthlyCharges']  = charges
+    inp['TotalCharges']    = tenure * charges
+    for col in feature_names:
+        if 'One' in col and 'Contract' in col:   inp[col] = 1 if contract == "1 an" else 0
+        elif 'Two' in col and 'Contract' in col:  inp[col] = 1 if contract == "2 ans" else 0
+        elif 'Fiber' in col:                      inp[col] = 1 if internet == "Fibre optique" else 0
+        elif 'No' in col and 'Internet' in col:   inp[col] = 1 if internet == "Aucun" else 0
+        elif 'OnlineSecurity' in col:             inp[col] = int(security)
+    return pd.DataFrame([inp])[feature_names]
+
+def chatbot_response(question):
+    q = question.lower()
+    n_urgent = len(df[df['ChurnProba'] > 0.6])
+    if any(w in q for w in ["bonjour", "salut", "hello", "bonsoir"]):
+        return f"Bonjour ! Je suis l'Assistant IA de RetainIQ 🔮\nActuellement **{n_urgent} clients** sont en risque élevé. Que puis-je faire pour vous ?"
+    elif any(w in q for w in ["churn", "partir", "quitter", "risque", "départ"]):
+        return f"Le churn est le départ d'un client. Notre modèle XGBoost le prédit de 0% à 100%.\nTaux actuel : **{df['Churn'].mean()*100:.1f}%** — **{n_urgent} clients urgents** en ce moment."
+    elif any(w in q for w in ["pourquoi", "cause", "raison", "facteur"]):
+        return "Les **3 principaux facteurs de churn** :\n1. **Contrat mensuel** (vs annuel)\n2. **Charges élevées** (>70€/mois)\n3. **Faible ancienneté** (<12 mois)"
+    elif any(w in q for w in ["xgboost", "modèle", "algorithme", "précision", "accuracy"]):
+        return f"Le modèle utilise **XGBoost**, entraîné sur **{len(df)} clients**.\nPrécision : **{model_accuracy:.1%}** — l'un des meilleurs algorithmes pour données tabulaires."
+    elif any(w in q for w in ["action", "faire", "recommandation", "retenir", "garder"]):
+        return "Actions les plus efficaces :\n1. 📞 Appel de rétention dans les 48h\n2. 🎁 Remise personnalisée 15-20%\n3. 📋 Migration vers un contrat annuel\n\nUtilise le **Simulateur What-If** pour tester l'impact avant d'agir !"
+    elif any(w in q for w in ["simulateur", "what-if", "simulation", "tester"]):
+        return "Le **Simulateur What-If** te permet de modifier les paramètres d'un client et voir en temps réel l'évolution de son risque.\nExemple : Mensuel → Annuel peut réduire le risque de **85% à 23%** !"
+    elif any(w in q for w in ["alerte", "urgent", "priorité"]):
+        return f"Il y a **{n_urgent} clients** avec un risque >60% en ce moment.\nConsulte l'onglet **Alertes Clients** pour la liste complète et les actions recommandées."
+    elif any(w in q for w in ["secteur", "sport", "salle", "ecommerce", "telecom", "saas"]):
+        return f"RetainIQ s'adapte à plusieurs secteurs ! Secteur actuel : **{secteur}**\n\nCompatible avec : 📱 Télécom · 💪 Sport · 🛍️ E-commerce · 🎓 EdTech · ☁️ SaaS B2B"
+    elif any(w in q for w in ["combien", "nombre", "total"]):
+        return f"Base actuelle :\n- **Total clients** : {len(df):,}\n- **Churned** : {df['Churn'].sum():,}\n- **Risque élevé** : {n_urgent}\n- **Taux de churn** : {df['Churn'].mean()*100:.1f}%"
+    else:
+        return "Je peux vous aider sur :\n- **Causes du churn** → 'pourquoi les clients partent ?'\n- **Le modèle IA** → 'comment fonctionne XGBoost ?'\n- **Actions** → 'que faire pour retenir un client ?'\n- **Alertes** → 'combien de clients sont urgents ?'"
+
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE 1 — OVERVIEW (original conservé)
+# ══════════════════════════════════════════════════════════════════
+if section == "🏠 Overview":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;font-size:3rem;color:white;'>🔮 RetainIQ — Churn Prediction</h1>
+        <p style='font-size:1.2rem;margin:10px 0 0 0;opacity:0.9;'>
+            Plateforme IA de Rétention Client — Projet Industriel 2024-2025
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown(f"""<div class="metric-container">
+            <h2 style='margin:0;font-size:2.5rem;'>{df.shape[0]:,}</h2>
+            <p style='margin:5px 0 0 0;font-size:1.1rem;'>Total Clients</p>
+        </div>""", unsafe_allow_html=True)
+    with col2:
+        churn_rate = (df['Churn'].sum() / len(df)) * 100
+        st.markdown(f"""<div class="metric-container">
+            <h2 style='margin:0;font-size:2.5rem;'>{churn_rate:.1f}%</h2>
+            <p style='margin:5px 0 0 0;font-size:1.1rem;'>Taux de Churn</p>
+        </div>""", unsafe_allow_html=True)
+    with col3:
+        st.markdown(f"""<div class="metric-container">
+            <h2 style='margin:0;font-size:2.5rem;'>{model_accuracy:.1%}</h2>
+            <p style='margin:5px 0 0 0;font-size:1.1rem;'>Précision Modèle</p>
+        </div>""", unsafe_allow_html=True)
+    with col4:
+        n_urgent = len(df[df['ChurnProba'] > 0.6])
+        st.markdown(f"""<div class="metric-container">
+            <h2 style='margin:0;font-size:2.5rem;'>{n_urgent}</h2>
+            <p style='margin:5px 0 0 0;font-size:1.1rem;'>🔴 Clients Urgents</p>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("🔍 Profils clients avec score de risque IA")
+
+    sample_df      = df.head(10).copy()
+    sample_features= sample_df.drop(['Churn', 'ChurnProba', 'RiskLevel'], axis=1)
+    risk_scores    = model.predict_proba(sample_features)[:, 1]
+
+    display_df = pd.DataFrame({
+        'Client N°':         range(1, 11),
+        cfg['tenure']:       sample_df['tenure'].values,
+        cfg['charges']:      sample_df['MonthlyCharges'].round(2).values,
+        'Total cumulé (€)': sample_df['TotalCharges'].round(2).values,
+        'Senior':            ['Oui' if x == 1 else 'Non' for x in sample_df['SeniorCitizen'].values],
+        cfg['churn_label']:  ['Oui' if x == 1 else 'Non' for x in sample_df['Churn'].values],
+        'Score de risque':   [f"{x:.1%}" for x in risk_scores],
+        'Niveau':            ['🔴 Élevé' if x > 0.6 else '🟡 Modéré' if x > 0.3 else '🟢 Faible' for x in risk_scores]
+    })
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    csv_data = df.drop(['ChurnProba', 'RiskLevel'], axis=1).to_csv(index=False)
+    st.download_button(
+        label="📥 Télécharger le dataset complet",
+        data=csv_data,
+        file_name=f"RetainIQ_Dataset_{df.shape[0]}_clients.csv",
+        mime='text/csv',
+        help=f"Télécharger les {df.shape[0]} clients avec {len(feature_names)} features"
+    )
+
+    if is_real_data:
+        st.info("📈 Données réelles Telco Customer Churn (Kaggle)")
+    else:
+        st.info("🎲 Données simulées — placez 'Telco-Customer-Churn.csv' dans le dossier pour les vraies données")
+
+    st.markdown("""
+    <div style='text-align:center;margin:2rem 0;padding:1rem;
+               background:linear-gradient(135deg,#1e3c72 0%,#2a5298 100%);
+               border-radius:15px;color:white;'>
+        <h4 style='margin:0;'>🔮 RetainIQ — Projet Industriel 2024-2025 · Équipe de 4</h4>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE 2 — VISUAL ANALYTICS (original conservé)
+# ══════════════════════════════════════════════════════════════════
+elif section == "📊 Visual Analytics":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;color:white;'>📊 Advanced Visual Analytics</h1>
+        <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>Deep Insights into Customer Behavior Patterns</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        fig = px.pie(
+            values=[len(df) - df['Churn'].sum(), df['Churn'].sum()],
+            names=['Active Customers', 'Churned Customers'],
+            title="🎯 Customer Retention Overview",
+            color_discrete_sequence=['#00CC96', '#EF553B'], hole=0.4
+        )
+        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(size=14))
+        st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        fig = px.histogram(
+            df, x='MonthlyCharges', color='Churn',
+            title="💰 Monthly Charges vs Churn Risk",
+            nbins=30, color_discrete_sequence=['#00CC96', '#EF553B']
+        )
+        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', showlegend=True)
+        st.plotly_chart(fig, use_container_width=True)
+
+    fig = px.box(
+        df, x='Churn', y='tenure', title="⏰ Customer Tenure Analysis",
+        color='Churn', color_discrete_sequence=['#00CC96', '#EF553B'],
+        labels={'Churn': 'Customer Status', 'tenure': 'Months with Company'}
+    )
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(tickmode='array', tickvals=[0, 1], ticktext=['Active', 'Churned'])
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    feature_importance = model.feature_importances_
+    importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': feature_importance})\
+        .sort_values('Importance', ascending=False).head(10)
+    fig = px.bar(
+        importance_df, x='Importance', y='Feature',
+        title="🔍 AI Model's Top Predictive Features",
+        color='Importance', color_continuous_scale='Viridis', orientation='h'
+    )
+    fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+    st.plotly_chart(fig, use_container_width=True)
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+    sns.countplot(x='Churn', data=df, palette=['#4CAF50', '#F44336'], ax=ax)
+    ax.set_title('Customer Churn Distribution', pad=20)
+    ax.set_xlabel('Churn Status'); ax.set_ylabel('Count')
+    st.pyplot(fig)
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.histplot(data=df, x='tenure', hue='Churn', multiple='stack', bins=30,
+                 palette=['#4CAF50', '#F44336'], ax=ax)
+    ax.set_title('Customer Tenure vs Churn', pad=20)
+    ax.set_xlabel('Tenure (months)'); ax.set_ylabel('Count')
+    st.pyplot(fig)
+
+    numeric_cols = [c for c in df.select_dtypes(include=['int64', 'float64']).columns if c != 'ChurnProba']
+    fig, ax = plt.subplots(figsize=(12, 8))
+    sns.heatmap(df[numeric_cols].corr(), annot=True, fmt=".2f", cmap='coolwarm', ax=ax)
+    ax.set_title('Feature Correlation Matrix', pad=20)
+    st.pyplot(fig)
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE 3 — AI PREDICTION (original + jauge ajoutée)
+# ══════════════════════════════════════════════════════════════════
+elif section == "🔮 AI Prediction":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;color:white;'>🔮 AI Churn Prediction Engine</h1>
+        <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>Get Instant Churn Risk Assessment</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    mode = st.radio("", ["🚀 Quick Prediction (Auto-fill with average values)", "✏️ Manual Input (Customize all features)"],
+                    horizontal=True)
+
+    if mode == "🚀 Quick Prediction (Auto-fill with average values)":
+        st.info("Using average values for all features. Click 'Predict' to see results.")
+        inputs = {}
+        for feature in feature_names:
+            inputs[feature] = 0 if df[feature].nunique() <= 2 else float(df[feature].median())
+        st.markdown("""
+        <div style="background:#34495E;padding:15px;border-radius:10px;margin:15px 0;">
+            <h4>ℹ️ Key Features Being Used:</h4>
+            <ul>
+                <li><b>Tenure:</b> {} months</li>
+                <li><b>Monthly Charges:</b> ${:.2f}</li>
+                <li><b>Total Charges:</b> ${:.2f}</li>
+            </ul>
+            <p>Other features are set to their median/modal values.</p>
+        </div>
+        """.format(int(inputs['tenure']), inputs['MonthlyCharges'], inputs['TotalCharges']),
+        unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="background:#34495E;padding:15px;border-radius:10px;margin:15px 0;">
+            <h4>💡 Tip:</h4>
+            <p>Focus on these key features for accurate predictions:</p>
+            <ul>
+                <li>Tenure (months with company)</li>
+                <li>Monthly/Total Charges</li>
+                <li>Contract Type</li>
+                <li>Internet Service</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        inputs = {}
+        with col1:
+            st.subheader("Basic Information")
+            inputs['tenure']         = st.slider("Tenure (months)", 1, 100, 24)
+            inputs['MonthlyCharges'] = st.slider("Monthly Charges ($)", float(df['MonthlyCharges'].min()), float(df['MonthlyCharges'].max()), 65.0)
+            inputs['TotalCharges']   = st.slider("Total Charges ($)", float(df['TotalCharges'].min()), float(df['TotalCharges'].max()), 2000.0)
+        with col2:
+            st.subheader("Service Information")
+            inputs['Contract']        = st.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"])
+            inputs['InternetService'] = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
+            inputs['OnlineSecurity']  = st.checkbox("Online Security")
+            inputs['TechSupport']     = st.checkbox("Tech Support")
+
+    if st.button("🔮 Predict Churn Probability", use_container_width=True):
+        if mode.startswith("✏️"):
+            inputs['Contract_One year']           = 1 if inputs['Contract'] == "One year" else 0
+            inputs['Contract_Two year']           = 1 if inputs['Contract'] == "Two year" else 0
+            inputs['Contract_One_year']           = inputs['Contract_One year']
+            inputs['Contract_Two_year']           = inputs['Contract_Two year']
+            inputs['InternetService_Fiber optic'] = 1 if inputs['InternetService'] == "Fiber optic" else 0
+            inputs['InternetService_Fiber_optic'] = inputs['InternetService_Fiber optic']
+            inputs['InternetService_No']          = 1 if inputs['InternetService'] == "No" else 0
+            inputs['OnlineSecurity_Yes']          = 1 if inputs['OnlineSecurity'] else 0
+            inputs['TechSupport_Yes']             = 1 if inputs['TechSupport'] else 0
+            for key in ['Contract', 'InternetService', 'OnlineSecurity', 'TechSupport']:
+                if key in inputs: del inputs[key]
+
+        final_inputs = {feature: inputs.get(feature, 0) for feature in feature_names}
+        input_df     = pd.DataFrame([final_inputs])
+        prediction   = model.predict_proba(input_df)[0][1]
+
+        # Jauge visuelle (NOUVEAU)
+        fig_g, lbl, col_g, css = risk_gauge(prediction)
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            st.plotly_chart(fig_g, use_container_width=True)
+        with c2:
+            st.markdown(f"""
+            <div class='{css}'>
+                <div style='font-size:1.5rem;font-weight:700;color:{col_g};'>{lbl}</div>
+                <div style='font-size:3rem;font-weight:800;color:{col_g};margin:10px 0;'>{prediction*100:.1f}%</div>
+                <div style='color:#94A3B8;font-size:0.9rem;'>Probabilité de départ du client</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        if prediction > 0.6:
+            st.markdown("""
+            <div style="background:#664d03;padding:15px;border-radius:10px;color:white;">
+                <h4>🚨 Retention Recommendations:</h4>
+                <ul>
+                    <li>Offer loyalty discount or special promotion</li>
+                    <li>Provide personalized service check-in</li>
+                    <li>Consider contract renewal incentives</li>
+                    <li>Address any service issues proactively</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background:#084298;padding:15px;border-radius:10px;color:white;">
+                <h4>💡 Engagement Suggestions:</h4>
+                <ul>
+                    <li>Continue providing excellent service</li>
+                    <li>Consider upselling additional services</li>
+                    <li>Check-in periodically to maintain satisfaction</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE 4 — FUTURE SCENARIOS (original conservé)
+# ══════════════════════════════════════════════════════════════════
+elif section == "🌟 Future Scenarios":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;color:white;'>🌟 Future Impact Simulator</h1>
+        <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>Predict How Changes Will Impact Customer Churn</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📈 Price Changes")
+        price_change = st.slider("Monthly Charges Change (%)", -50, 100, 0)
+    with col2:
+        st.subheader("⏰ Market Conditions")
+        tenure_impact = st.slider("Average Tenure Impact (%)", -50, 50, 0)
+
+    if st.button("🚀 Run Scenario Analysis", type="primary"):
+        df_scenario = df.copy()
+        if 'MonthlyCharges' in df_scenario.columns:
+            df_scenario['MonthlyCharges'] *= (1 + price_change / 100)
+        if 'tenure' in df_scenario.columns:
+            df_scenario['tenure'] *= (1 + tenure_impact / 100)
+            df_scenario['tenure'] = df_scenario['tenure'].clip(1, 100)
+
+        X_scenario    = df_scenario.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1)
+        X_current     = df.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1)
+        future_probas = model.predict_proba(X_scenario)[:, 1]
+        current_probas= model.predict_proba(X_current)[:, 1]
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"""<div class="metric-container">
+                <h2 style='margin:0;font-size:2rem;'>{current_probas.mean():.1%}</h2>
+                <p style='margin:5px 0 0 0;font-size:1.1rem;'>Current Churn Risk</p>
+            </div>""", unsafe_allow_html=True)
+        with col2:
+            change_indicator = "📈" if future_probas.mean() > current_probas.mean() else "📉"
+            risk_change = ((future_probas.mean() - current_probas.mean()) / current_probas.mean()) * 100
+            st.markdown(f"""<div class="metric-container">
+                <h2 style='margin:0;font-size:2rem;'>{future_probas.mean():.1%} {change_indicator}</h2>
+                <p style='margin:5px 0 0 0;font-size:1.1rem;'>Future Churn Risk ({risk_change:+.1f}%)</p>
+            </div>""", unsafe_allow_html=True)
+
+        fig = make_subplots(rows=1, cols=2,
+                            subplot_titles=('Current Risk Distribution', 'Future Risk Distribution'))
+        fig.add_trace(go.Histogram(x=current_probas, name='Current Risk',
+                                   marker_color='lightblue', opacity=0.7, nbinsx=30), row=1, col=1)
+        fig.add_trace(go.Histogram(x=future_probas,  name='Future Risk',
+                                   marker_color='salmon',    opacity=0.7, nbinsx=30), row=1, col=2)
+        fig.update_layout(height=500, showlegend=True,
+                          plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                          title_text="📊 Scenario Impact Analysis")
+        st.plotly_chart(fig, use_container_width=True)
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE 5 — SIMULATEUR WHAT-IF (NOUVEAU)
+# ══════════════════════════════════════════════════════════════════
+elif section == "⚡ Simulateur What-If":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;color:white;'>⚡ Simulateur What-If</h1>
+        <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>Testez l'impact de vos actions avant de les mettre en œuvre</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.info("💡 Modifiez les paramètres d'un client et voyez instantanément comment son risque de churn évolue.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("📌 Situation ACTUELLE")
+        tenure_a   = st.slider(f"{cfg['tenure']} — Actuel",  1, 72, 6,    key="wa_ten")
+        charges_a  = st.slider(f"{cfg['charges']} — Actuel", 20.0, 120.0, 85.0, key="wa_ch")
+        contract_a = st.selectbox("Contrat actuel",  ["Mensuel", "1 an", "2 ans"], key="wa_co")
+        internet_a = st.selectbox("Internet actuel", ["DSL", "Fibre optique", "Aucun"], key="wa_in")
+        security_a = st.checkbox("Sécurité incluse ?", key="wa_se")
+    with col2:
+        st.subheader("🎯 Situation APRÈS votre action")
+        tenure_b   = st.slider(f"{cfg['tenure']} — Après",          1, 72, tenure_a,              key="wb_ten")
+        charges_b  = st.slider(f"{cfg['charges']} — Après remise", 20.0, 120.0, max(20.0, charges_a - 15), key="wb_ch")
+        contract_b = st.selectbox("Nouveau contrat",  ["Mensuel", "1 an", "2 ans"], index=1, key="wb_co")
+        internet_b = st.selectbox("Nouveau service",  ["DSL", "Fibre optique", "Aucun"],       key="wb_in")
+        security_b = st.checkbox("Sécurité incluse ?", value=True, key="wb_se")
+
+    score_a = model.predict_proba(build_input_df(tenure_a, charges_a, contract_a, internet_a, security_a))[0][1]
+    score_b = model.predict_proba(build_input_df(tenure_b, charges_b, contract_b, internet_b, security_b))[0][1]
+    delta   = score_b - score_a
+
+    st.markdown("---")
+    st.subheader("📊 Résultat de la simulation")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        fg_a, la, ca, _ = risk_gauge(score_a)
+        st.markdown("**Avant l'action**")
+        st.plotly_chart(fg_a, use_container_width=True)
+        st.markdown(f"<div style='text-align:center;color:{ca};font-weight:700;font-size:1.2rem;'>{score_a*100:.1f}% — {la}</div>", unsafe_allow_html=True)
+
+    with c3:
+        fg_b, lb, cb, _ = risk_gauge(score_b)
+        st.markdown("**Après l'action**")
+        st.plotly_chart(fg_b, use_container_width=True)
+        st.markdown(f"<div style='text-align:center;color:{cb};font-weight:700;font-size:1.2rem;'>{score_b*100:.1f}% — {lb}</div>", unsafe_allow_html=True)
+
+    with c2:
+        dc = "#00CC96" if delta < 0 else "#EF4444"
+        di = "📉 Amélioration" if delta < 0 else "📈 Dégradation"
+        st.markdown(f"""
+        <div class='section-card' style='text-align:center;margin-top:55px;'>
+            <div style='font-size:0.9rem;color:#888;'>Impact de l'action</div>
+            <div style='font-size:2.8rem;font-weight:800;color:{dc};'>{delta*100:+.1f}%</div>
+            <div style='color:{dc};font-weight:600;margin-top:6px;'>{di}</div>
+            <div style='color:#888;font-size:0.8rem;margin-top:12px;'>
+                Économie client : <b style='color:#00CC96;'>{charges_a - charges_b:.0f}€/mois</b>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("💡 Recommandations pour ce client")
+    recs = get_recommendations(score_a, tenure_a, charges_a)
+    cols = st.columns(3)
+    for i, rec in enumerate(recs):
+        cols[i].markdown(f"<div class='section-card'><p style='color:#CBD5E1;margin:0;font-size:0.9rem;'>{rec}</p></div>", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE 6 — ALERTES CLIENTS (NOUVEAU)
+# ══════════════════════════════════════════════════════════════════
+elif section == "🚨 Alertes Clients":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;color:white;'>🚨 Alertes Clients à Risque</h1>
+        <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>Liste priorisée des clients nécessitant une action immédiate</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        seuil = st.slider("Seuil de risque minimum (%)", 30, 90, 60, step=5)
+    with col2:
+        tri = st.selectbox("Trier par", ["Score décroissant", "Charges décroissantes", "Ancienneté croissante"])
+
+    clients_risque = df[df['ChurnProba'] > seuil / 100].copy()
+    if   tri == "Score décroissant":       clients_risque = clients_risque.sort_values('ChurnProba', ascending=False)
+    elif tri == "Charges décroissantes":   clients_risque = clients_risque.sort_values('MonthlyCharges', ascending=False)
+    else:                                  clients_risque = clients_risque.sort_values('tenure', ascending=True)
+
+    ca, cb, cc = st.columns(3)
+    ca.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{len(clients_risque)}</h2><p>Clients à risque >{seuil}%</p></div>""", unsafe_allow_html=True)
+    cb.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{clients_risque['ChurnProba'].mean()*100:.1f}%</h2><p>Score moyen du groupe</p></div>""", unsafe_allow_html=True)
+    cc.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{clients_risque['MonthlyCharges'].sum():.0f}€</h2><p>Revenu mensuel à risque</p></div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+    show_cols = [c for c in ['tenure', 'MonthlyCharges', 'TotalCharges', 'SeniorCitizen', 'ChurnProba', 'RiskLevel'] if c in clients_risque.columns]
+    disp = clients_risque[show_cols].head(50).copy()
+    disp.index = range(1, len(disp) + 1)
+    disp['ChurnProba'] = disp['ChurnProba'].apply(lambda x: f"{x*100:.1f}%")
+    disp = disp.rename(columns={
+        'tenure': cfg['tenure'], 'MonthlyCharges': cfg['charges'],
+        'TotalCharges': 'Total (€)', 'SeniorCitizen': 'Senior',
+        'ChurnProba': '⚠️ Score', 'RiskLevel': 'Niveau'
+    })
+    st.dataframe(disp, use_container_width=True)
+
+    csv_alert = clients_risque.drop(['ChurnProba', 'RiskLevel'], axis=1).to_csv(index=False).encode('utf-8')
+    st.download_button(f"📥 Exporter {len(clients_risque)} clients à risque (CSV)",
+                       csv_alert, f"alertes_{seuil}pct.csv", "text/csv")
+
+    st.markdown("---")
+    st.subheader("📌 Actions recommandées pour ce groupe")
+    c1, c2, c3 = st.columns(3)
+    c1.markdown("<div class='alert-box'>📞 <b>Appel de rétention</b><br>Contacter prioritairement les clients avec score >80% dans les 48h</div>", unsafe_allow_html=True)
+    c2.markdown("<div class='alert-box'>🎁 <b>Offre personnalisée</b><br>Remise ciblée ou upgrade selon le profil de chaque client</div>", unsafe_allow_html=True)
+    c3.markdown("<div class='alert-box'>📧 <b>Campagne email</b><br>Enquête de satisfaction dans les 24h pour identifier les blocages</div>", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════
+# PAGE 7 — ASSISTANT IA CHATBOT (NOUVEAU)
+# ══════════════════════════════════════════════════════════════════
+elif section == "🤖 Assistant IA":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;color:white;'>🤖 Assistant IA RetainIQ</h1>
+        <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>Posez vos questions sur le churn, les clients et le modèle</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = [
+            {"role": "bot", "text": f"Bonjour ! Je suis l'Assistant IA de RetainIQ 🔮\n\nJe peux vous aider sur :\n- Les **risques de churn** de vos clients\n- Les **causes principales** de départ\n- Les **actions de rétention** recommandées\n- Le **fonctionnement du modèle XGBoost**\n\nActuellement **{len(df[df['ChurnProba'] > 0.6])} clients** sont en risque élevé. Que voulez-vous savoir ?"}
+        ]
+
+    for msg in st.session_state.chat_history:
+        if msg["role"] == "user":
+            st.markdown(f"<div class='chat-user'>👤 {msg['text']}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='chat-bot'>🤖 {msg['text']}</div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("💬 Questions rapides")
+    quick_qs = [
+        "Pourquoi les clients partent-ils ?",
+        "Comment fonctionne XGBoost ?",
+        "Que faire pour retenir un client ?",
+        "Combien de clients sont urgents ?",
+        "RetainIQ fonctionne pour quels secteurs ?",
+    ]
+    cols = st.columns(len(quick_qs))
+    for i, q in enumerate(quick_qs):
+        if cols[i].button(q, key=f"qq_{i}", use_container_width=True):
+            st.session_state.chat_history.append({"role": "user", "text": q})
+            st.session_state.chat_history.append({"role": "bot",  "text": chatbot_response(q)})
+            st.rerun()
+
+    with st.form("chat_form", clear_on_submit=True):
+        c1, c2 = st.columns([5, 1])
+        with c1:
+            user_input = st.text_input("Votre question...", label_visibility="collapsed",
+                                       placeholder="Ex: Pourquoi ce client risque de partir ?")
+        with c2:
+            submit = st.form_submit_button("Envoyer ➤", use_container_width=True)
+
+    if submit and user_input.strip():
+        st.session_state.chat_history.append({"role": "user", "text": user_input})
+        st.session_state.chat_history.append({"role": "bot",  "text": chatbot_response(user_input)})
+        st.rerun()
+
+    if st.button("🗑️ Effacer la conversation"):
+        st.session_state.chat_history = []
+        st.rerun()
+
+    elif section == "📤 Importer mes données":
+    show_pipeline_page(
+        user_email=st.session_state.get("user_email", "default"),
+        secteur=secteur
+    )
+
+# ══════════════════════════════════════════════════════════════════
+# FOOTER
+# ════════════════════════════════════════════════════════════════
+st.markdown("---")
+st.markdown("""
+<div style='text-align:center;padding:1rem;color:#666;font-size:0.8rem;'>
+    🔮 <b>RetainIQ</b> — Plateforme IA de Prédiction du Churn &nbsp;·&nbsp;
+    Projet Industriel 2024-2025 &nbsp;·&nbsp;
+    XGBoost · Streamlit · Plotly
+</div>
+        
+""", unsafe_allow_html=True)
