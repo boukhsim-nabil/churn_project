@@ -14,6 +14,9 @@ from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from loyalty_messages_job import send_loyalty_messages
+
+
 
 # ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -103,11 +106,21 @@ def start_scheduler(
             replace_existing=True,
             misfire_grace_time=3600,  # tolérance 1h si Streamlit était éteint
         )
+        # Job fidélité — le 1er de chaque mois à 10h00
+        _scheduler.add_job(
+            func=send_loyalty_messages,
+            trigger=CronTrigger(day=1, hour=10, minute=0),
+            id="loyalty_messages",
+            misfire_grace_time=3600
+        )
+
 
         _scheduler.start()
         logger.info(
             f"[Scheduler] Démarré — rapport planifié chaque {day_of_week} à {hour:02d}:{minute:02d}"
         )
+
+
 
     _refresh_next_run()
     return _scheduler

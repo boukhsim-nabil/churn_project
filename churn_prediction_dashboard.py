@@ -18,6 +18,7 @@ from data_pipeline import show_pipeline_page, load_user_model
 from shap_explainer import show_shap_page
 from email_reports import generate_pdf_report, send_pdf_via_sendgrid
 from auth import show_auth_page
+from loyalty_page import show_loyalty_page
 import scheduler as sched
 
 warnings.filterwarnings('ignore')
@@ -158,22 +159,60 @@ cfg = SECTEUR_CONFIG[secteur]
 
 st.sidebar.markdown("---")
 
-# Navigation (sections originales + nouvelles)
-section = st.sidebar.radio(
-    "🎯 Navigation",
-    [
-        "🏠 Overview",
-        "📊 Visual Analytics",
-        "🔮 AI Prediction",
-        "🌟 Future Scenarios",
-        "⚡ Simulateur What-If",
-        "🚨 Alertes Clients",
-        "🤖 Assistant IA",
-        "📤 Importer mes données",
-        "🧠 Explainable AI",
-        "⏰ Rapports Planifiés",
-    ]
-)
+# Navigation — restreinte si aucun modèle importé (Blank Slate)
+_blank_pages = ["🏠 Bienvenue", "📤 Importer mes données"]
+import os
+user_email = st.session_state.get("user_email", "")
+_email_safe = user_email.replace("@", "_at_").replace(".", "_")
+has_model = os.path.exists(f"model_{_email_safe}.pkl")
+
+# Ton code existant continue ici :
+# ── VÉRIFICATION DU MODÈLE (Blank Slate) ──
+import os
+user_email = st.session_state.get("user_email", "")
+_email_safe = user_email.replace("@", "_at_").replace(".", "_")
+has_model = os.path.exists(f"model_{_email_safe}.pkl")
+
+# ── MENU DE NAVIGATION ──
+_blank_pages = ["🏠 Bienvenue", "📤 Importer mes données"]
+
+if not has_model:
+    st.sidebar.markdown("""
+    <div style='background:#1C150A;border:1px solid #F59E0B;border-radius:8px;
+                padding:10px 12px;margin-bottom:8px;'>
+        <p style='color:#F59E0B;font-size:0.8rem;margin:0;font-weight:600;'>
+            ⚠️ Importez vos données pour débloquer toutes les pages
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Gestion sécurisée de l'index de navigation
+    nav_demandee = st.session_state.get("_nav_override", "🏠 Bienvenue")
+    _blank_default = _blank_pages.index(nav_demandee) if nav_demandee in _blank_pages else 0
+    st.session_state.pop("_nav_override", None)
+    
+    section = st.sidebar.radio(
+        "🎯 Navigation",
+        _blank_pages,
+        index=_blank_default,
+    )
+else:
+    section = st.sidebar.radio(
+        "🎯 Navigation",
+        [
+            "🏠 Overview",
+            "📊 Visual Analytics",
+            "🔮 AI Prediction",
+            "🌟 Future Scenarios",
+            "⚡ Simulateur What-If",
+            "🚨 Alertes Clients",
+            "🤖 Assistant IA",
+            "📤 Importer mes données",
+            "🧠 Explainable AI",
+            "⏰ Rapports Planifiés",
+            "🏆 Programme de Fidélité",
+        ]
+    )
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"<div class='secteur-badge'>Secteur : {secteur}</div>", unsafe_allow_html=True)
@@ -254,9 +293,13 @@ def train_model(df):
     return model, X.columns, accuracy
 
 model, feature_names, model_accuracy = train_model(df)
+"""
+# ── Blank Slate : vérifier si le modèle utilisateur existe ───────
+user_email = st.session_state.get("user_email", "")
+_email_safe = user_email.replace("@", "_at_").replace(".", "_")
+has_model   = os.path.exists(f"model_{_email_safe}.pkl")"""
 
 # Charger le modèle custom si disponible
-user_email = st.session_state.get("user_email", "")
 custom_model, custom_features, custom_df = load_user_model(user_email)
 
 if custom_model is not None and custom_features is not None and custom_df is not None:
@@ -272,7 +315,10 @@ if custom_model is not None and custom_features is not None and custom_df is not
         )
     st.sidebar.success("✅ Modèle personnalisé actif")
 else:
-    st.sidebar.info("📊 Données démo (Telco)")
+    if not has_model:
+        st.sidebar.warning("⚠️ Aucun modèle importé")
+    else:
+        st.sidebar.info("📊 Données démo (Telco)")
     X_all = df.drop("Churn", axis=1)
     df['ChurnProba'] = model.predict_proba(X_all)[:, 1]
     df['RiskLevel']  = df['ChurnProba'].apply(
@@ -371,9 +417,81 @@ def chatbot_response(question):
         return "Je peux vous aider sur :\n- **Causes du churn** → 'pourquoi les clients partent ?'\n- **Le modèle IA** → 'comment fonctionne XGBoost ?'\n- **Actions** → 'que faire pour retenir un client ?'\n- **Alertes** → 'combien de clients sont urgents ?'"
 
 # ══════════════════════════════════════════════════════════════════
+# PAGE 0 — BIENVENUE / BLANK SLATE (nouvel utilisateur sans modèle)
+# ══════════════════════════════════════════════════════════════════
+if section == "🏠 Bienvenue":
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#0D1B2E 0%,#1a1d2e 100%);
+                border:1px solid #667eea;border-radius:20px;
+                padding:3rem 2.5rem;text-align:center;margin-bottom:2rem;'>
+        <div style='font-size:4rem;margin-bottom:1rem;'>🔮</div>
+        <h1 style='color:white;margin:0 0 0.5rem 0;font-size:2.4rem;'>
+            Bienvenue sur RetainIQ
+        </h1>
+        <p style='color:#94A3B8;font-size:1.1rem;margin:0;'>
+            Votre plateforme IA de prédiction du churn — prête à être configurée
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c1, c2, c3 = st.columns(3)
+    for col, icon, title, desc in [
+        (c1, "📤", "Importez vos données", "Glissez votre fichier CSV — la détection des colonnes est automatique."),
+        (c2, "🤖", "L'IA s'entraîne", "Un modèle XGBoost personnalisé est créé en quelques secondes."),
+        (c3, "📊", "Explorez vos insights", "Tableaux de bord, alertes, SHAP, rapports PDF — tout se déverrouille."),
+    ]:
+        col.markdown(f"""
+        <div style='background:#1a1d2e;border:1px solid #2d3748;border-radius:16px;
+                    padding:1.8rem;text-align:center;height:180px;'>
+            <div style='font-size:2.2rem;margin-bottom:0.8rem;'>{icon}</div>
+            <h4 style='color:white;margin:0 0 0.5rem 0;font-size:1rem;'>{title}</h4>
+            <p style='color:#64748B;font-size:0.85rem;margin:0;'>{desc}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='background:#0D1B2E;border:1px solid #02C39A;border-radius:12px;
+                padding:1.5rem 2rem;margin-bottom:1.5rem;'>
+        <h3 style='color:#02C39A;margin:0 0 0.8rem 0;'>✅ Formats de données acceptés</h3>
+        <div style='display:flex;gap:2rem;flex-wrap:wrap;'>
+            <div style='color:#CBD5E1;'>
+                <strong style='color:white;'>📁 Fichier</strong><br>
+                CSV encodé UTF-8 ou Latin-1
+            </div>
+            <div style='color:#CBD5E1;'>
+                <strong style='color:white;'>🏭 Secteurs</strong><br>
+                Télécom · Fitness · E-commerce · EdTech · SaaS B2B
+            </div>
+            <div style='color:#CBD5E1;'>
+                <strong style='color:white;'>📋 Colonnes requises</strong><br>
+                Ancienneté (tenure) + Charges + Colonne Churn (0/1)
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col_btn, col_empty = st.columns([1, 2])
+    with col_btn:
+        if st.button("📤 Importer mes données maintenant", use_container_width=True, type="primary"):
+            st.session_state["_nav_override"] = "📤 Importer mes données"
+            st.rerun()  # Le radio sera initialisé à l'index 1 au prochain run
+
+    st.markdown("""
+    <div style='background:#1a1d2e;border:1px solid #2d3748;border-radius:12px;
+                padding:1.2rem 1.5rem;margin-top:1rem;'>
+        <p style='color:#64748B;font-size:0.85rem;margin:0;'>
+            💡 <strong style='color:#94A3B8;'>Conseil :</strong>
+            Pour de meilleurs résultats, utilisez un fichier d'au moins 500 lignes.
+            Votre modèle est sauvegardé automatiquement et chargé à chaque connexion.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════
 # PAGE 1 — OVERVIEW (original conservé)
 # ══════════════════════════════════════════════════════════════════
-if section == "🏠 Overview":
+elif section == "🏠 Overview":
     st.markdown("""
     <div class="main-header">
         <h1 style='margin:0;font-size:3rem;color:white;'>🔮 RetainIQ — Churn Prediction</h1>
@@ -414,16 +532,19 @@ if section == "🏠 Overview":
     sample_features= sample_df.drop(['Churn', 'ChurnProba', 'RiskLevel'], axis=1, errors='ignore')
     risk_scores    = model.predict_proba(sample_features)[:, 1]
 
-    display_df = pd.DataFrame({
-        'Client N°':         range(1, 11),
-        cfg['tenure']:       sample_df['tenure'].values,
-        cfg['charges']:      sample_df['MonthlyCharges'].round(2).values,
-        'Total cumulé (€)': sample_df['TotalCharges'].round(2).values,
-        'Senior':            ['Oui' if x == 1 else 'Non' for x in sample_df['SeniorCitizen'].values],
-        cfg['churn_label']:  ['Oui' if x == 1 else 'Non' for x in sample_df['Churn'].values],
-        'Score de risque':   [f"{x:.1%}" for x in risk_scores],
-        'Niveau':            ['🔴 Élevé' if x > 0.6 else '🟡 Modéré' if x > 0.3 else '🟢 Faible' for x in risk_scores]
-    })
+    display_dict = {
+        'Client N°':        range(1, 11),
+        cfg['tenure']:      sample_df['tenure'].values,
+        cfg['charges']:     sample_df['MonthlyCharges'].round(2).values if 'MonthlyCharges' in sample_df.columns else [None]*10,
+        cfg['churn_label']: ['Oui' if x == 1 else 'Non' for x in sample_df['Churn'].values],
+        'Score de risque':  [f"{x:.1%}" for x in risk_scores],
+        'Niveau':           ['🔴 Élevé' if x > 0.6 else '🟡 Modéré' if x > 0.3 else '🟢 Faible' for x in risk_scores]
+    }
+    if 'TotalCharges' in sample_df.columns:
+        display_dict['Total cumulé (€)'] = sample_df['TotalCharges'].round(2).values
+    if 'SeniorCitizen' in sample_df.columns:
+        display_dict['Senior'] = ['Oui' if x == 1 else 'Non' for x in sample_df['SeniorCitizen'].values]
+    display_df = pd.DataFrame(display_dict)
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
     csv_data = df.drop(['ChurnProba', 'RiskLevel'], axis=1, errors='ignore').to_csv(index=False)
@@ -533,52 +654,71 @@ elif section == "🔮 AI Prediction":
     mode = st.radio("", ["🚀 Quick Prediction (Auto-fill with average values)", "✏️ Manual Input (Customize all features)"],
                     horizontal=True)
 
+    # Detect which columns are available for display/input
+    _telco_cols = {'tenure', 'MonthlyCharges', 'TotalCharges'}
+    _has_telco  = _telco_cols.issubset(set(feature_names))
+
     if mode == "🚀 Quick Prediction (Auto-fill with average values)":
         st.info("Using average values for all features. Click 'Predict' to see results.")
         inputs = {}
         for feature in feature_names:
             inputs[feature] = 0 if df[feature].nunique() <= 2 else float(df[feature].median())
-        st.markdown("""
+        # Build a summary of the top 3 numeric features dynamically
+        _numeric_features = [f for f in feature_names if df[f].nunique() > 2]
+        _summary_items = "".join(
+            f"<li><b>{f}:</b> {inputs[f]:.2f}</li>" for f in _numeric_features[:3]
+        )
+        st.markdown(f"""
         <div style="background:#34495E;padding:15px;border-radius:10px;margin:15px 0;">
             <h4>ℹ️ Key Features Being Used:</h4>
-            <ul>
-                <li><b>Tenure:</b> {} months</li>
-                <li><b>Monthly Charges:</b> ${:.2f}</li>
-                <li><b>Total Charges:</b> ${:.2f}</li>
-            </ul>
+            <ul>{_summary_items}</ul>
             <p>Other features are set to their median/modal values.</p>
         </div>
-        """.format(int(inputs['tenure']), inputs['MonthlyCharges'], inputs['TotalCharges']),
-        unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div style="background:#34495E;padding:15px;border-radius:10px;margin:15px 0;">
-            <h4>💡 Tip:</h4>
-            <p>Focus on these key features for accurate predictions:</p>
-            <ul>
-                <li>Tenure (months with company)</li>
-                <li>Monthly/Total Charges</li>
-                <li>Contract Type</li>
-                <li>Internet Service</li>
-            </ul>
-        </div>
         """, unsafe_allow_html=True)
-        col1, col2 = st.columns(2)
+    else:
         inputs = {}
-        with col1:
-            st.subheader("Basic Information")
-            inputs['tenure']         = st.slider("Tenure (months)", 1, 100, 24)
-            inputs['MonthlyCharges'] = st.slider("Monthly Charges ($)", float(df['MonthlyCharges'].min()), float(df['MonthlyCharges'].max()), 65.0)
-            inputs['TotalCharges']   = st.slider("Total Charges ($)", float(df['TotalCharges'].min()), float(df['TotalCharges'].max()), 2000.0)
-        with col2:
-            st.subheader("Service Information")
-            inputs['Contract']        = st.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"])
-            inputs['InternetService'] = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
-            inputs['OnlineSecurity']  = st.checkbox("Online Security")
-            inputs['TechSupport']     = st.checkbox("Tech Support")
+        if _has_telco:
+            # Original Telco fixed-field layout
+            st.markdown("""
+            <div style="background:#34495E;padding:15px;border-radius:10px;margin:15px 0;">
+                <h4>💡 Tip:</h4>
+                <p>Focus on these key features for accurate predictions:</p>
+                <ul>
+                    <li>Tenure (months with company)</li>
+                    <li>Monthly/Total Charges</li>
+                    <li>Contract Type</li>
+                    <li>Internet Service</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Basic Information")
+                inputs['tenure']         = st.slider("Tenure (months)", 1, 100, 24)
+                inputs['MonthlyCharges'] = st.slider("Monthly Charges ($)", float(df['MonthlyCharges'].min()), float(df['MonthlyCharges'].max()), 65.0)
+                inputs['TotalCharges']   = st.slider("Total Charges ($)", float(df['TotalCharges'].min()), float(df['TotalCharges'].max()), 2000.0)
+            with col2:
+                st.subheader("Service Information")
+                inputs['Contract']        = st.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"])
+                inputs['InternetService'] = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
+                inputs['OnlineSecurity']  = st.checkbox("Online Security")
+                inputs['TechSupport']     = st.checkbox("Tech Support")
+        else:
+            # Dynamic layout for custom datasets
+            st.info("Adjust feature values to generate a prediction.")
+            col1, col2 = st.columns(2)
+            for i, feature in enumerate(feature_names):
+                with col1 if i % 2 == 0 else col2:
+                    if df[feature].nunique() <= 2:
+                        inputs[feature] = 1 if st.checkbox(feature) else 0
+                    else:
+                        _fmin  = float(df[feature].min())
+                        _fmax  = float(df[feature].max())
+                        _fmed  = float(df[feature].median())
+                        inputs[feature] = st.slider(feature, _fmin, _fmax, _fmed)
 
     if st.button("🔮 Predict Churn Probability", use_container_width=True):
-        if mode.startswith("✏️"):
+        if mode.startswith("✏️") and _has_telco:
             inputs['Contract_One year']           = 1 if inputs['Contract'] == "One year" else 0
             inputs['Contract_Two year']           = 1 if inputs['Contract'] == "Two year" else 0
             inputs['Contract_One_year']           = inputs['Contract_One year']
@@ -981,6 +1121,9 @@ elif section == "⏰ Rapports Planifiés":
         hist_df.columns = ["Date", "Statut", "Durée (s)", "Détail"]
         st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
+
+elif section == "🏆 Programme de Fidélité":
+    show_loyalty_page(df, secteur, user_company, user_email)
 # ══════════════════════════════════════════════════════════════════
 # FOOTER
 # ════════════════════════════════════════════════════════════════
