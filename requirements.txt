@@ -12,3 +12,4 @@ apscheduler
 reportlab
 python-dotenv
 sendgrid
+xlsxwriter

@@ -336,6 +336,74 @@ def load_user_model(user_email):
     return model, features, df
 
 # ═══════════════════════════════════════════════════════════════
+# MOTEUR DE TRIAGE STATISTIQUE (agnostique au secteur)
+# ═══════════════════════════════════════════════════════════════
+def triage_risque(df_risque: pd.DataFrame, df_full: pd.DataFrame) -> pd.DataFrame:
+    """
+    Analyse les clients à haut risque et attribue un motif + action suggérée.
+    Logique entièrement basée sur des seuils statistiques, sans terminologie sectorielle.
+    """
+    charges_p75 = df_full['MonthlyCharges'].quantile(0.75) if 'MonthlyCharges' in df_full.columns else None
+    result = df_risque.copy()
+
+    def _motif_action(row):
+        # 1. Détection contrat court — recherche la colonne Contract (brute ou one-hot)
+        contrat_mensuel = False
+        if 'Contract' in row.index:
+            contrat_mensuel = 'month' in str(row['Contract']).lower()
+        else:
+            one_yr = row.get('Contract_One_year', row.get('Contract_One year', None))
+            two_yr = row.get('Contract_Two_year', row.get('Contract_Two year', None))
+            if one_yr is not None and two_yr is not None:
+                contrat_mensuel = (one_yr == 0) and (two_yr == 0)
+
+        # 2. Pression tarifaire
+        pression_tarif = (
+            charges_p75 is not None
+            and 'MonthlyCharges' in row.index
+            and pd.notna(row['MonthlyCharges'])
+            and row['MonthlyCharges'] > charges_p75
+        )
+
+        # 3. Nouveau client
+        nouveau_client = (
+            'tenure' in row.index
+            and pd.notna(row['tenure'])
+            and row['tenure'] <= 6
+        )
+
+        if nouveau_client and pression_tarif:
+            return pd.Series({
+                'Motif de Risque': 'Nouveau client — pression tarifaire',
+                'Action Suggérée': 'Offre de bienvenue + options premium à prix réduit',
+            })
+        if contrat_mensuel:
+            return pd.Series({
+                'Motif de Risque': "Absence d'engagement",
+                'Action Suggérée': 'Proposer un engagement long terme avec avantage tarifaire',
+            })
+        if pression_tarif:
+            return pd.Series({
+                'Motif de Risque': 'Pression tarifaire',
+                'Action Suggérée': "Audit des services souscrits + offre d'optimisation de coût",
+            })
+        if nouveau_client:
+            return pd.Series({
+                'Motif de Risque': 'Nouveau client',
+                'Action Suggérée': "Programme d'onboarding renforcé + contact personnalisé J+7",
+            })
+        return pd.Series({
+            "Motif de Risque": "Risque d'insatisfaction globale",
+            'Action Suggérée': "Enquête de satisfaction ciblée + appel de rétention sous 48h",
+        })
+
+    triage_df = result.apply(_motif_action, axis=1)
+    result['Motif de Risque'] = triage_df['Motif de Risque']
+    result['Action Suggérée'] = triage_df['Action Suggérée']
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════
 # PAGE COMPLÈTE DU PIPELINE (affichée dans Streamlit)
 # ═══════════════════════════════════════════════════════════════
 def show_pipeline_page(user_email, secteur):

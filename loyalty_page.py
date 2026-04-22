@@ -120,19 +120,20 @@ def segment_clients(df, secteur):
 # ── PAGE PRINCIPALE ───────────────────────────────────────────────────────────
 def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
     """
-    Affiche la page complète Programme de Fidélité & Rétention.
+    Affiche la page Programme de Fidélité & Rétention — version actionnable.
     """
+    from data_pipeline import triage_risque
 
     st.markdown("""
     <div class="main-header">
         <h1 style='margin:0;color:white;'>🏆 Programme de Fidélité & Rétention</h1>
         <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>
-            De l'IA prédictive à l'IA prescriptive — Arsenal anti-churn adapté au marché marocain
+            Ciblage précis par Motif de Risque — De l'analyse à l'action en un clic
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # Vérifier que les données sont disponibles
+    # ── VALIDATION DES DONNÉES ───────────────────────────────────────────────
     if df is None or len(df) == 0:
         st.warning("⚠️ Aucune donnée disponible. Importez vos données via 'Importer mes données'.")
         return
@@ -141,524 +142,281 @@ def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
         st.error("❌ Colonne 'ChurnProba' manquante. Lancez d'abord une prédiction IA.")
         return
 
-    if 'tenure' not in df.columns:
-        st.error("❌ Colonne 'tenure' (ancienneté) manquante dans vos données.")
+    # ── ENRICHISSEMENT TRIAGE ────────────────────────────────────────────────
+    # On considère comme "à risque" tous les clients avec ChurnProba > 0.40
+    clients_risque_raw = df[df['ChurnProba'] > 0.40].copy()
+
+    if clients_risque_raw.empty:
+        st.success("✅ Aucun client à risque détecté (seuil : 40%). Excellent taux de rétention !")
         return
 
-    # ── TOGGLE ACTIVATION ───────────────────────────────────────────────────
-    col_toggle, col_info = st.columns([1, 3])
-    with col_toggle:
-        campagnes_actives = st.toggle("🎯 Activer les campagnes", value=True)
-    with col_info:
-        if campagnes_actives:
-            st.success("✅ Les campagnes de récompenses sont **actives**. Les segments sont calculés en temps réel.")
+    # Appliquer le moteur de triage pour obtenir 'Motif de Risque'
+    clients_enrichis = triage_risque(clients_risque_raw, df)
+
+    # Ajouter la colonne Priorité
+    def _label_priorite(proba):
+        if proba > 0.80:
+            return "🔴 Critique (>80%)"
+        elif proba > 0.60:
+            return "🟠 Urgent (60-80%)"
         else:
-            st.info("💤 Campagnes désactivées — les segments restent visibles mais aucune action n'est déclenchée.")
+            return "🟡 À suivre (40-60%)"
 
-    # ── SEGMENTATION ────────────────────────────────────────────────────────
-    cohorte_a, cohorte_b, champions = segment_clients(df, secteur)
+    clients_enrichis['Priorité'] = clients_enrichis['ChurnProba'].apply(_label_priorite)
 
-    # ── KPIs GLOBAUX ─────────────────────────────────────────────────────────
+    # ── KPIs RAPIDES ─────────────────────────────────────────────────────────
     st.markdown("---")
-    c1, c2, c3, c4, c5 = st.columns(5)
+    nb_critique = (clients_enrichis['ChurnProba'] > 0.80).sum()
+    nb_urgent   = ((clients_enrichis['ChurnProba'] > 0.60) & (clients_enrichis['ChurnProba'] <= 0.80)).sum()
+    nb_suivre   = ((clients_enrichis['ChurnProba'] > 0.40) & (clients_enrichis['ChurnProba'] <= 0.60)).sum()
+    revenu_risque = clients_enrichis['MonthlyCharges'].sum() if 'MonthlyCharges' in clients_enrichis.columns else 0
 
-    c1.markdown(f"""<div class='metric-container'>
-        <h2 style='margin:0;font-size:2rem;color:#EF4444;'>{len(cohorte_a)}</h2>
-        <p style='margin:4px 0 0;font-size:0.85rem;'>🚨 Clients à sauver</p>
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(f"""<div class='metric-container'>
+        <h2 style='margin:0;font-size:2rem;color:#EF4444;'>{nb_critique}</h2>
+        <p style='margin:4px 0 0;font-size:0.85rem;'>🔴 Critique (&gt;80%)</p>
     </div>""", unsafe_allow_html=True)
-
-    c2.markdown(f"""<div class='metric-container'>
-        <h2 style='margin:0;font-size:2rem;color:#02C39A;'>{len(cohorte_b)}</h2>
-        <p style='margin:4px 0 0;font-size:0.85rem;'>🏆 Clients fidèles</p>
+    k2.markdown(f"""<div class='metric-container'>
+        <h2 style='margin:0;font-size:2rem;color:#F97316;'>{nb_urgent}</h2>
+        <p style='margin:4px 0 0;font-size:0.85rem;'>🟠 Urgent (60-80%)</p>
     </div>""", unsafe_allow_html=True)
-
-    c3.markdown(f"""<div class='metric-container'>
-        <h2 style='margin:0;font-size:2rem;color:#F59E0B;'>{len(champions)}</h2>
-        <p style='margin:4px 0 0;font-size:0.85rem;'>🌟 Champions</p>
+    k3.markdown(f"""<div class='metric-container'>
+        <h2 style='margin:0;font-size:2rem;color:#EAB308;'>{nb_suivre}</h2>
+        <p style='margin:4px 0 0;font-size:0.85rem;'>🟡 À suivre (40-60%)</p>
     </div>""", unsafe_allow_html=True)
-
-    msg_ce_mois = len(champions[champions['tenure'] % 12 == 0]) if not champions.empty else 0
-    c4.markdown(f"""<div class='metric-container'>
-        <h2 style='margin:0;font-size:2rem;color:#667eea;'>{msg_ce_mois}</h2>
-        <p style='margin:4px 0 0;font-size:0.85rem;'>📧 Anniversaires ce mois</p>
-    </div>""", unsafe_allow_html=True)
-
-    revenu_risque = cohorte_a['MonthlyCharges'].sum() if 'MonthlyCharges' in cohorte_a.columns and not cohorte_a.empty else 0
-    c5.markdown(f"""<div class='metric-container'>
-        <h2 style='margin:0;font-size:2rem;color:#EF4444;'>{revenu_risque:.0f} MAD</h2>
+    k4.markdown(f"""<div class='metric-container'>
+        <h2 style='margin:0;font-size:2rem;color:#EF4444;'>{revenu_risque:.0f} €</h2>
         <p style='margin:4px 0 0;font-size:0.85rem;'>💸 Revenu mensuel menacé</p>
     </div>""", unsafe_allow_html=True)
 
-    # ── GRAPHIQUE DE SEGMENTATION ────────────────────────────────────────────
+    # ── FILTRES DE CIBLAGE ────────────────────────────────────────────────────
     st.markdown("---")
-    col_graph, col_dist = st.columns(2)
+    st.markdown("### 🎯 Ciblage de la campagne")
 
-    with col_graph:
-        st.subheader("📊 Distribution des segments")
-        seg_data = pd.DataFrame({
-            'Segment':  ['🚨 Sauvetage (A)', '🏆 Fidélité (B)', '🌟 Champions', '📊 Autres'],
-            'Clients':  [
-                len(cohorte_a),
-                len(cohorte_b),
-                len(champions),
-                len(df) - len(cohorte_a) - len(cohorte_b) - len(champions)
-            ],
-        })
-        fig = px.pie(
-            seg_data, values='Clients', names='Segment',
-            color_discrete_sequence=['#EF4444', '#02C39A', '#F59E0B', '#64748B'],
-            hole=0.45
-        )
-        fig.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font_color='#CBD5E1', height=300, margin=dict(t=20, b=20)
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    col_f1, col_f2 = st.columns(2)
 
-    with col_dist:
-        st.subheader("📈 Score de risque vs Ancienneté")
-        sample_df = df.sample(min(300, len(df))).copy()
-        sample_df['Segment'] = '📊 Autres'
-        sample_df.loc[sample_df['ChurnProba'] > 0.50, 'Segment'] = '🚨 Sauvetage'
-        sample_df.loc[
-            (sample_df['ChurnProba'] < 0.35) & (sample_df['tenure'] >= df['tenure'].quantile(0.75)),
-            'Segment'
-        ] = '🏆 Fidélité'
-        sample_df.loc[
-            (sample_df['ChurnProba'] < 0.20) & (sample_df['tenure'] >= 12),
-            'Segment'
-        ] = '🌟 Champion'
-
-        fig2 = px.scatter(
-            sample_df, x='tenure', y='ChurnProba',
-            color='Segment',
-            color_discrete_map={
-                '🚨 Sauvetage': '#EF4444',
-                '🏆 Fidélité':  '#02C39A',
-                '🌟 Champion':  '#F59E0B',
-                '📊 Autres':    '#64748B',
-            },
-            labels={'tenure': 'Ancienneté (mois)', 'ChurnProba': 'Score de risque'},
-            opacity=0.7
+    with col_f1:
+        options_priorite = ["Tous", "🔴 Critique (>80%)", "🟠 Urgent (60-80%)", "🟡 À suivre (40-60%)"]
+        filtre_priorite = st.selectbox(
+            "Filtrer par priorité",
+            options_priorite,
+            key="loyalty_filtre_priorite",
         )
-        fig2.add_hline(y=0.50, line_dash="dash", line_color="#EF4444",
-                       annotation_text="Seuil sauvetage")
-        fig2.add_hline(y=0.35, line_dash="dash", line_color="#02C39A",
-                       annotation_text="Seuil fidélité")
-        fig2.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            font_color='#CBD5E1', height=300, margin=dict(t=20, b=20)
-        )
-        st.plotly_chart(fig2, use_container_width=True)
 
-    # ── ONGLETS COHORTES ─────────────────────────────────────────────────────
+    with col_f2:
+        motifs_dispo = sorted(clients_enrichis['Motif de Risque'].unique().tolist())
+        options_motifs = ["Tous les motifs"] + motifs_dispo
+        filtre_motif = st.selectbox(
+            "Filtrer par Motif de Risque",
+            options_motifs,
+            key="loyalty_filtre_motif",
+        )
+
+    # ── APPLICATION DES FILTRES ──────────────────────────────────────────────
+    df_filtre = clients_enrichis.copy()
+
+    if filtre_priorite != "Tous":
+        df_filtre = df_filtre[df_filtre['Priorité'] == filtre_priorite]
+
+    if filtre_motif != "Tous les motifs":
+        df_filtre = df_filtre[df_filtre['Motif de Risque'] == filtre_motif]
+
+    # ── TABLEAU DYNAMIQUE ─────────────────────────────────────────────────────
     st.markdown("---")
-    tab_a, tab_b, tab_champ, tab_config = st.tabs([
-        "🚨 Cohorte A — Sauvetage",
-        "🏆 Cohorte B — Fidélité",
-        "🌟 Mur des Champions",
-        "⚙️ Configurer les Récompenses",
-    ])
 
-    # ── TAB A : SAUVETAGE ────────────────────────────────────────────────────
-    with tab_a:
-        st.subheader(f"🚨 Cohorte A — Sauvetage Stratégique ({len(cohorte_a)} clients)")
-        st.info("Ces clients ont un score de churn > 50%. Une action commerciale immédiate peut les retenir.")
+    nb_filtres = len(df_filtre)
+    if nb_filtres == 0:
+        st.info("Aucun client ne correspond aux filtres sélectionnés.")
+    else:
+        st.markdown(
+            f"<p style='color:#94A3B8;font-size:0.9rem;margin-bottom:0.5rem;'>"
+            f"<strong style='color:#CBD5E1;'>{nb_filtres} client(s)</strong> "
+            f"correspondent aux critères de ciblage sélectionnés.</p>",
+            unsafe_allow_html=True,
+        )
 
-        if cohorte_a.empty:
-            st.success("✅ Aucun client en zone critique. Excellent travail de rétention !")
+        # Construire les colonnes à afficher
+        display_cols = {}
+        if 'customerID' in df_filtre.columns:
+            display_cols['customerID'] = 'ID Client'
+        if 'tenure' in df_filtre.columns:
+            display_cols['tenure'] = 'Ancienneté (mois)'
+        if 'MonthlyCharges' in df_filtre.columns:
+            display_cols['MonthlyCharges'] = 'Charges/mois'
+        display_cols['ChurnProba']      = 'Score de Risque'
+        display_cols['Priorité']        = 'Priorité'
+        display_cols['Motif de Risque'] = 'Motif de Risque'
+
+        cols_present = [c for c in display_cols.keys() if c in df_filtre.columns]
+        df_display = df_filtre[cols_present].sort_values('ChurnProba', ascending=False).head(100).copy()
+        df_display.index = range(1, len(df_display) + 1)
+        df_display['ChurnProba'] = df_display['ChurnProba'].apply(lambda x: f"{x * 100:.1f}%")
+        df_display = df_display.rename(columns=display_cols)
+
+        st.dataframe(df_display, use_container_width=True)
+
+        # Export CSV
+        csv_export = df_filtre.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "📥 Exporter la sélection (CSV)",
+            csv_export,
+            "clients_cibles.csv",
+            "text/csv",
+            use_container_width=False,
+        )
+
+    # ── ACTION DE FIDÉLISATION ────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#0D1B2E,#1a1d2e);
+                border:1px solid #667eea;border-radius:14px;
+                padding:1.2rem 1.5rem;margin-bottom:1.2rem;'>
+        <h3 style='color:white;margin:0 0 4px 0;'>🎁 Action de Fidélisation</h3>
+        <p style='color:#64748B;margin:0;font-size:0.88rem;'>
+            Choisissez une récompense et déclenchez la campagne pour les clients ciblés ci-dessus.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    RECOMPENSES_AGNOSTIQUES = [
+        "1 mois offert",
+        "Surclassement gratuit (Upgrade)",
+        "Accès Premium offert pendant 3 mois",
+        "Bon de réduction -20%",
+    ]
+
+    col_r1, col_r2 = st.columns([3, 1])
+    with col_r1:
+        selected_reward = st.selectbox(
+            "Choisir la récompense à offrir :",
+            RECOMPENSES_AGNOSTIQUES,
+            key="loyalty_reward_select",
+        )
+    with col_r2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        trigger = st.button(
+            "🚀 Déclencher la campagne",
+            key="loyalty_trigger_btn",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if trigger:
+        if nb_filtres == 0:
+            st.warning("⚠️ Aucun client sélectionné. Ajustez vos filtres avant de déclencher la campagne.")
         else:
-            # Filtres
-            col_f1, col_f2 = st.columns(2)
-            with col_f1:
-                filtre_priorite = st.multiselect(
-                    "Filtrer par priorité",
-                    ["🔴 Critique", "🟠 Urgent", "🟡 À suivre"],
-                    default=["🔴 Critique", "🟠 Urgent", "🟡 À suivre"]
-                )
-            with col_f2:
-                tri_a = st.selectbox("Trier par", ["Score décroissant", "Charges décroissantes"])
-
-            df_a_show = cohorte_a[cohorte_a['Priorité'].isin(filtre_priorite)].copy()
-            if tri_a == "Score décroissant":
-                df_a_show = df_a_show.sort_values('ChurnProba', ascending=False)
-            else:
-                df_a_show = df_a_show.sort_values('MonthlyCharges', ascending=False) if 'MonthlyCharges' in df_a_show.columns else df_a_show
-
-            # Affichage
-            show_cols_a = [c for c in ['tenure', 'MonthlyCharges', 'TotalCharges', 'ChurnProba', 'Priorité'] if c in df_a_show.columns]
-            df_display_a = df_a_show[show_cols_a].head(50).copy()
-            df_display_a.index = range(1, len(df_display_a) + 1)
-            if 'ChurnProba' in df_display_a.columns:
-                df_display_a['ChurnProba'] = df_display_a['ChurnProba'].apply(lambda x: f"{x*100:.1f}%")
-            df_display_a = df_display_a.rename(columns={
-                'tenure': 'Ancienneté (mois)',
-                'MonthlyCharges': 'Charges/mois (MAD)',
-                'TotalCharges': 'Total cumulé (MAD)',
-                'ChurnProba': '⚠️ Score de risque',
-            })
-            st.dataframe(df_display_a, use_container_width=True)
-
-            # Sélecteur de récompense
-            st.markdown("#### 🎁 Attribuer une récompense de sauvetage")
-            catalog = REWARDS_CATALOG.get(secteur, {})
-            rewards_a = catalog.get("sauvetage", ["Aucune récompense configurée pour ce secteur"])
-            col_r1, col_r2 = st.columns([2, 1])
-            with col_r1:
-                selected_reward_a = st.selectbox("Choisir la récompense à offrir", rewards_a, key="reward_a")
-            with col_r2:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if campagnes_actives:
-                    if st.button("🚀 Déclencher la campagne", key="btn_a", use_container_width=True):
-                        st.success(f"✅ Campagne déclenchée pour {len(df_a_show)} clients — Récompense : **{selected_reward_a}**")
-                        st.balloons()
-                else:
-                    st.warning("Activez les campagnes pour déclencher.")
-
-            # Export
-            csv_a = cohorte_a.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Exporter Cohorte A (CSV)", csv_a, "cohorte_sauvetage.csv", "text/csv")
-
-    # ── TAB B : FIDÉLITÉ ─────────────────────────────────────────────────────
-    with tab_b:
-        st.subheader(f"🏆 Cohorte B — Fidélité Historique ({len(cohorte_b)} clients)")
-        st.info("Ces clients sont stables et anciens. Les remercier renforce leur attachement à votre marque.")
-
-        if cohorte_b.empty:
-            st.info("📊 Aucun client dans la cohorte fidélité pour le moment.")
-        else:
-            show_cols_b = [c for c in ['tenure', 'MonthlyCharges', 'TotalCharges', 'ChurnProba', 'Médaille'] if c in cohorte_b.columns]
-            df_display_b = cohorte_b[show_cols_b].sort_values('tenure', ascending=False).head(50).copy()
-            df_display_b.index = range(1, len(df_display_b) + 1)
-            if 'ChurnProba' in df_display_b.columns:
-                df_display_b['ChurnProba'] = df_display_b['ChurnProba'].apply(lambda x: f"{x*100:.1f}%")
-            df_display_b = df_display_b.rename(columns={
-                'tenure': 'Ancienneté (mois)',
-                'MonthlyCharges': 'Charges/mois (MAD)',
-                'TotalCharges': 'Total cumulé (MAD)',
-                'ChurnProba': '✅ Score de risque',
-            })
-            st.dataframe(df_display_b, use_container_width=True)
-
-            # Récompense fidélité
-            st.markdown("#### 🎖️ Attribuer une récompense de fidélité")
-            catalog = REWARDS_CATALOG.get(secteur, {})
-            rewards_b = catalog.get("fidelite", ["Aucune récompense configurée pour ce secteur"])
-            col_r3, col_r4 = st.columns([2, 1])
-            with col_r3:
-                selected_reward_b = st.selectbox("Choisir la récompense à offrir", rewards_b, key="reward_b")
-            with col_r4:
-                st.markdown("<br>", unsafe_allow_html=True)
-                if campagnes_actives:
-                    if st.button("🎖️ Envoyer aux clients fidèles", key="btn_b", use_container_width=True):
-                        st.success(f"✅ Récompense envoyée à {len(cohorte_b)} clients fidèles — **{selected_reward_b}**")
-                        st.balloons()
-                else:
-                    st.warning("Activez les campagnes pour envoyer.")
-
-            csv_b = cohorte_b.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Exporter Cohorte B (CSV)", csv_b, "cohorte_fidelite.csv", "text/csv")
-
-    # ── TAB CHAMPIONS : MUR DES CHAMPIONS ───────────────────────────────────
-    with tab_champ:
-        st.subheader(f"🌟 Mur des Champions — Top clients stables ({len(champions)} champions)")
-        st.markdown("""
-        <div style='background:#0D1B2E;border:1px solid #F59E0B;border-radius:12px;padding:1rem;margin-bottom:1rem;'>
-            <p style='color:#F59E0B;font-weight:600;margin:0 0 6px;'>Qui sont les Champions ?</p>
-            <p style='color:#CBD5E1;margin:0;font-size:0.9rem;'>
-                Clients avec un score de churn < 20% ET une ancienneté > 12 mois.<br>
-                Ce sont vos ambassadeurs — ils méritent d'être remerciés chaque mois.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        if champions.empty:
-            st.info("📊 Aucun champion détecté. Les champions apparaissent quand ChurnProba < 20% ET ancienneté > 12 mois.")
-        else:
-            top10 = champions.sort_values('tenure', ascending=False).head(10).copy()
-
-            # Cartes Champions
-            cols_champ = st.columns(5)
-            for i, (_, row) in enumerate(top10.head(10).iterrows()):
-                col = cols_champ[i % 5]
-                tenure   = int(row.get('tenure', 0))
-                score    = row.get('ChurnProba', 0) * 100
-                charges  = row.get('MonthlyCharges', 0)
-                annees   = tenure // 12
-                mois_r   = tenure % 12
-                medal    = "🥇" if tenure >= 60 else "🥈" if tenure >= 36 else "🥉"
-
-                col.markdown(f"""
-                <div style='background:#0D1B2E;border:1px solid #F59E0B;border-radius:12px;
-                            padding:0.9rem;text-align:center;margin-bottom:8px;'>
-                    <div style='font-size:1.8rem;'>{medal}</div>
-                    <div style='color:#F59E0B;font-weight:700;font-size:0.95rem;'>
-                        Client #{i+1}
-                    </div>
-                    <div style='color:#CBD5E1;font-size:0.8rem;margin-top:4px;'>
-                        {annees}a {mois_r}m d'ancienneté
-                    </div>
-                    <div style='color:#02C39A;font-size:0.8rem;'>
-                        Risque : {score:.1f}%
-                    </div>
-                    <div style='color:#64748B;font-size:0.75rem;'>
-                        {charges:.0f} MAD/mois
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # Anniversaires ce mois
-            st.markdown("---")
-            st.subheader("🎂 Anniversaires de contrat ce mois")
-            anniversaires = champions[champions['tenure'] % 12 == 0].copy()
-            if anniversaires.empty:
-                st.info("Aucun anniversaire de contrat ce mois-ci.")
-            else:
-                anniversaires['Années'] = (anniversaires['tenure'] // 12).astype(str) + " an(s)"
-                show_cols_c = [c for c in ['tenure', 'MonthlyCharges', 'ChurnProba', 'Années'] if c in anniversaires.columns]
-                df_anniv    = anniversaires[show_cols_c].copy()
-                df_anniv.index = range(1, len(df_anniv) + 1)
-                if 'ChurnProba' in df_anniv.columns:
-                    df_anniv['ChurnProba'] = df_anniv['ChurnProba'].apply(lambda x: f"{x*100:.1f}%")
-                df_anniv = df_anniv.rename(columns={'tenure': 'Ancienneté (mois)', 'MonthlyCharges': 'Charges/mois (MAD)', 'ChurnProba': 'Score de risque'})
-                st.dataframe(df_anniv, use_container_width=True)
-                st.success(f"🎉 {len(anniversaires)} client(s) fêtent leur anniversaire de contrat ce mois — les messages automatiques seront envoyés le 1er du mois à 10h.")
-
-            # Aperçu des messages
-            st.markdown("---")
-            st.subheader("📧 Aperçu des messages automatiques")
-            messages = GRATITUDE_MESSAGES.get(secteur, GRATITUDE_MESSAGES.get("📱 Télécom", {}))
-
-            with st.expander("📅 Message d'anniversaire (exemple)"):
-                ex_msg = messages.get("anniversaire", "").format(
-                    annees=2, tenure=24,
-                    reward="double de vos points fidélité ce mois-ci"
-                )
-                st.text(ex_msg)
-
-            with st.expander("💌 Message de reconnaissance mensuelle (exemple)"):
-                ex_msg2 = messages.get("mensuel", "").format(tenure=18)
-                st.text(ex_msg2)
-
-    # ── TAB CONFIG — Panneau d'administration dynamique ─────────────────────
-    with tab_config:
-        st.markdown("""
-        <div style='background:linear-gradient(135deg,#0D1B2E,#1a1d2e);
-                    border:1px solid #667eea;border-radius:14px;
-                    padding:1.2rem 1.5rem;margin-bottom:1.5rem;'>
-            <h3 style='color:white;margin:0 0 4px 0;'>⚙️ Panneau d'administration — Règles de Récompenses</h3>
-            <p style='color:#64748B;margin:0;font-size:0.88rem;'>
-                Paramétrez vos campagnes de rétention. Les règles sont sauvegardées par entreprise.
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Charger les paramètres existants
-        cfg_data = _load_settings(user_email)
-
-        with st.form("loyalty_config_form", border=False):
-
-            # ── BLOC 1 : Seuils ─────────────────────────────────────────────
-            st.markdown("### 🎛️ Bloc 1 — Paramétrage des Seuils")
-            col_s1, col_s2, col_s3 = st.columns(3)
-
-            with col_s1:
-                seuil_urgence = st.slider(
-                    "🚨 Seuil d'urgence — Cohorte A (%)",
-                    min_value=50, max_value=90,
-                    value=int(cfg_data["seuil_urgence"] * 100),
-                    step=5,
-                    help="Les clients dont le score de churn dépasse ce seuil entrent en Cohorte A (Sauvetage).",
-                )
-            with col_s2:
-                tenure_min_b = st.number_input(
-                    "🏆 Ancienneté min — Cohorte B (mois)",
-                    min_value=1, max_value=120,
-                    value=int(cfg_data["tenure_min_b"]),
-                    step=1,
-                    help="Un client doit avoir au moins N mois d'ancienneté pour intégrer la Cohorte B (Fidélité).",
-                )
-            with col_s3:
-                depense_min = st.number_input(
-                    "💰 Dépense minimum requise (MAD)",
-                    min_value=0.0, max_value=99999.0,
-                    value=float(cfg_data["depense_min"]),
-                    step=50.0,
-                    help="Filtre de rentabilité : les clients dont la dépense mensuelle est inférieure à ce seuil sont exclus des campagnes.",
-                )
-
-            st.markdown("---")
-
-            # ── BLOC 2 : Valeur récompense ───────────────────────────────────
-            st.markdown("### 💎 Bloc 2 — Personnalisation de la Valeur")
-            col_v1, col_v2 = st.columns(2)
-
-            with col_v1:
-                reward_type = st.selectbox(
-                    "🎁 Type de récompense",
-                    ["Pourcentage %", "Montant fixe MAD", "En nature"],
-                    index=["Pourcentage %", "Montant fixe MAD", "En nature"].index(
-                        cfg_data.get("reward_type", "Pourcentage %")
-                    ),
-                    help="Choisissez la nature de la récompense offerte aux clients ciblés.",
-                )
-            with col_v2:
-                reward_value = st.number_input(
-                    "📊 Valeur de la récompense",
-                    min_value=0.0, max_value=99999.0,
-                    value=float(cfg_data["reward_value"]),
-                    step=5.0,
-                    help="Ex : 20 → 20% de remise, ou 200 MAD offerts, ou 1 unité en nature.",
-                )
-
-            # Aperçu en temps réel
-            _preview_label = {
-                "Pourcentage %": f"{reward_value:.0f}% de remise",
-                "Montant fixe MAD": f"{reward_value:.0f} MAD offerts",
-                "En nature": f"{reward_value:.0f} unité(s) en nature",
-            }.get(reward_type, "")
-            st.info(f"**Aperçu :** La récompense affichée sera → **{_preview_label}**")
-
-            st.markdown("---")
-
-            # ── BLOC 3 : Moteur de templates ─────────────────────────────────
-            st.markdown("### 📝 Bloc 3 — Moteur de Templates")
-            st.markdown("""
-            <div style='background:#0D1B2E;border:1px solid #2d3748;border-radius:8px;
-                        padding:0.8rem 1rem;margin-bottom:1rem;font-size:0.85rem;color:#94A3B8;'>
-                <strong style='color:#667eea;'>Balises dynamiques disponibles :</strong>
-                &nbsp;
-                <code style='color:#02C39A;background:#1a1d2e;padding:2px 6px;border-radius:4px;'>{client_nom}</code>
-                <code style='color:#02C39A;background:#1a1d2e;padding:2px 6px;border-radius:4px;'>{anciennete_mois}</code>
-                <code style='color:#02C39A;background:#1a1d2e;padding:2px 6px;border-radius:4px;'>{valeur_recompense}</code>
-                <code style='color:#02C39A;background:#1a1d2e;padding:2px 6px;border-radius:4px;'>{score_risque}</code>
-                <code style='color:#02C39A;background:#1a1d2e;padding:2px 6px;border-radius:4px;'>{nom_entreprise}</code>
-            </div>
-            """, unsafe_allow_html=True)
-
-            email_subject = st.text_input(
-                "📧 Objet de l'email / SMS",
-                value=cfg_data["email_subject"],
-                max_chars=120,
-                help="Utilisez les balises ci-dessus pour personnaliser l'objet.",
+            st.success(
+                f"✅ Campagne **'{selected_reward}'** déclenchée avec succès pour "
+                f"**{nb_filtres} client(s)** ! Les emails ont été mis en file d'attente."
             )
-            email_body = st.text_area(
-                "💬 Corps du message",
-                value=cfg_data["email_body"],
-                height=200,
-                help="Corps complet du message. Les balises {…} seront remplacées automatiquement.",
-            )
-
-            # Aperçu du message
-            with st.expander("👁️ Aperçu du message (exemple avec données fictives)"):
-                _demo = {
-                    "client_nom":       "Mohamed Alami",
-                    "anciennete_mois":  "24",
-                    "valeur_recompense": _preview_label,
-                    "score_risque":     "72%",
-                    "nom_entreprise":   user_company or "RetainIQ",
-                }
-                try:
-                    _subj_preview = email_subject.format(**_demo)
-                    _body_preview = email_body.format(**_demo)
-                    st.markdown(f"**Objet :** {_subj_preview}")
-                    st.text(_body_preview)
-                except KeyError as e:
-                    st.warning(f"Balise inconnue dans le template : {e}")
-
-            st.markdown("---")
-
-            # ── BLOC 4 : Garde-fous ──────────────────────────────────────────
-            st.markdown("### 🔒 Bloc 4 — Garde-Fous et Limites (Sécurité)")
-            col_g1, col_g2, col_g3 = st.columns(3)
-
-            with col_g1:
-                budget_max = st.number_input(
-                    "💵 Budget max / mois (MAD)",
-                    min_value=0.0, max_value=9_999_999.0,
-                    value=float(cfg_data["budget_max"]),
-                    step=500.0,
-                    help="Montant total maximum alloué aux récompenses sur un mois calendaire. 0 = illimité.",
-                )
-            with col_g2:
-                quota_mois = st.number_input(
-                    "👥 Quota de récompenses / mois",
-                    min_value=0, max_value=100_000,
-                    value=int(cfg_data["quota_mois"]),
-                    step=10,
-                    help="Nombre maximum de clients pouvant recevoir une récompense par mois. 0 = illimité.",
-                )
-            with col_g3:
-                periode_carence = st.number_input(
-                    "⏳ Période de carence (mois)",
-                    min_value=0, max_value=24,
-                    value=int(cfg_data["periode_carence"]),
-                    step=1,
-                    help="Un même client ne peut pas recevoir une récompense plus d'une fois par N mois.",
-                )
-
-            st.markdown("---")
-
-            # ── BLOC 5 : Activation globale ──────────────────────────────────
-            st.markdown("### 🔌 Bloc 5 — Activation Globale des Campagnes")
-            col_t1, col_t2 = st.columns(2)
-
-            with col_t1:
-                campagne_sauvetage = st.toggle(
-                    "🚨 Activer la campagne **Sauvetage** (Cohorte A)",
-                    value=bool(cfg_data["campagne_sauvetage"]),
-                    help="Active ou désactive les actions automatiques vers les clients à fort risque de churn.",
-                )
-                if campagne_sauvetage:
-                    st.success("✅ Campagne Sauvetage **active**")
-                else:
-                    st.warning("💤 Campagne Sauvetage **désactivée**")
-
-            with col_t2:
-                campagne_fidelite = st.toggle(
-                    "🏆 Activer la campagne **Fidélité** (Cohorte B)",
-                    value=bool(cfg_data["campagne_fidelite"]),
-                    help="Active ou désactive les récompenses vers les clients stables et anciens.",
-                )
-                if campagne_fidelite:
-                    st.success("✅ Campagne Fidélité **active**")
-                else:
-                    st.warning("💤 Campagne Fidélité **désactivée**")
-
-            st.markdown("<br>", unsafe_allow_html=True)
-
-            # ── BOUTON SAUVEGARDER ───────────────────────────────────────────
-            col_save, col_reset, _ = st.columns([1, 1, 2])
-            submitted = col_save.form_submit_button(
-                "💾 Sauvegarder la configuration",
-                use_container_width=True,
-                type="primary",
-            )
-            reset = col_reset.form_submit_button(
-                "↩️ Réinitialiser",
-                use_container_width=True,
-            )
-
-        if submitted:
-            new_settings = {
-                "seuil_urgence":      seuil_urgence / 100.0,
-                "tenure_min_b":       int(tenure_min_b),
-                "depense_min":        float(depense_min),
-                "reward_type":        reward_type,
-                "reward_value":       float(reward_value),
-                "email_subject":      email_subject,
-                "email_body":         email_body,
-                "budget_max":         float(budget_max),
-                "quota_mois":         int(quota_mois),
-                "periode_carence":    int(periode_carence),
-                "campagne_sauvetage": campagne_sauvetage,
-                "campagne_fidelite":  campagne_fidelite,
-            }
-            _save_settings(user_email, new_settings)
-            st.success("✅ Configuration sauvegardée avec succès !")
             st.balloons()
 
-        if reset:
-            _save_settings(user_email, _DEFAULT_SETTINGS.copy())
-            st.info("↩️ Configuration réinitialisée aux valeurs par défaut.")
-            st.rerun()
+    # ── PANNEAU DE CONFIGURATION (repliable) ─────────────────────────────────
+    st.markdown("---")
+    with st.expander("⚙️ Configurer les Récompenses & Règles de campagne", expanded=False):
+        _render_config_panel(user_email, user_company, secteur)
+
+
+def _render_config_panel(user_email: str, user_company: str, secteur: str):
+    """Panneau d'administration des règles de récompenses."""
+
+    st.markdown("""
+    <div style='background:linear-gradient(135deg,#0D1B2E,#1a1d2e);
+                border:1px solid #667eea;border-radius:14px;
+                padding:1.2rem 1.5rem;margin-bottom:1.5rem;'>
+        <h3 style='color:white;margin:0 0 4px 0;'>⚙️ Panneau d'administration — Règles de Récompenses</h3>
+        <p style='color:#64748B;margin:0;font-size:0.88rem;'>
+            Paramétrez vos campagnes de rétention. Les règles sont sauvegardées par entreprise.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    cfg_data = _load_settings(user_email)
+
+    with st.form("loyalty_config_form", border=False):
+
+        st.markdown("### 🎛️ Bloc 1 — Paramétrage des Seuils")
+        col_s1, col_s2, col_s3 = st.columns(3)
+        with col_s1:
+            seuil_urgence = st.slider(
+                "🚨 Seuil d'urgence — Cohorte A (%)", 50, 90,
+                int(cfg_data["seuil_urgence"] * 100), step=5,
+            )
+        with col_s2:
+            tenure_min_b = st.number_input(
+                "🏆 Ancienneté min — Cohorte B (mois)", 1, 120,
+                int(cfg_data["tenure_min_b"]), step=1,
+            )
+        with col_s3:
+            depense_min = st.number_input(
+                "💰 Dépense minimum requise (€)", 0.0, 99999.0,
+                float(cfg_data["depense_min"]), step=50.0,
+            )
+
+        st.markdown("---")
+        st.markdown("### 💎 Bloc 2 — Personnalisation de la Valeur")
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            reward_type = st.selectbox(
+                "🎁 Type de récompense",
+                ["Pourcentage %", "Montant fixe €", "En nature"],
+                index=["Pourcentage %", "Montant fixe €", "En nature"].index(
+                    cfg_data.get("reward_type", "Pourcentage %")
+                ) if cfg_data.get("reward_type", "Pourcentage %") in ["Pourcentage %", "Montant fixe €", "En nature"] else 0,
+            )
+        with col_v2:
+            reward_value = st.number_input(
+                "📊 Valeur de la récompense", 0.0, 99999.0,
+                float(cfg_data["reward_value"]), step=5.0,
+            )
+
+        st.markdown("---")
+        st.markdown("### 🔒 Bloc 3 — Garde-Fous et Limites")
+        col_g1, col_g2, col_g3 = st.columns(3)
+        with col_g1:
+            budget_max = st.number_input(
+                "💵 Budget max / mois (€)", 0.0, 9_999_999.0,
+                float(cfg_data["budget_max"]), step=500.0,
+            )
+        with col_g2:
+            quota_mois = st.number_input(
+                "👥 Quota de récompenses / mois", 0, 100_000,
+                int(cfg_data["quota_mois"]), step=10,
+            )
+        with col_g3:
+            periode_carence = st.number_input(
+                "⏳ Période de carence (mois)", 0, 24,
+                int(cfg_data["periode_carence"]), step=1,
+            )
+
+        st.markdown("---")
+        col_save, col_reset, _ = st.columns([1, 1, 2])
+        submitted = col_save.form_submit_button(
+            "💾 Sauvegarder", use_container_width=True, type="primary",
+        )
+        reset = col_reset.form_submit_button("↩️ Réinitialiser", use_container_width=True)
+
+    if submitted:
+        new_settings = {
+            "seuil_urgence":      seuil_urgence / 100.0,
+            "tenure_min_b":       int(tenure_min_b),
+            "depense_min":        float(depense_min),
+            "reward_type":        reward_type,
+            "reward_value":       float(reward_value),
+            "email_subject":      cfg_data["email_subject"],
+            "email_body":         cfg_data["email_body"],
+            "budget_max":         float(budget_max),
+            "quota_mois":         int(quota_mois),
+            "periode_carence":    int(periode_carence),
+            "campagne_sauvetage": cfg_data.get("campagne_sauvetage", True),
+            "campagne_fidelite":  cfg_data.get("campagne_fidelite", True),
+        }
+        _save_settings(user_email, new_settings)
+        st.success("✅ Configuration sauvegardée avec succès !")
+
+    if reset:
+        _save_settings(user_email, _DEFAULT_SETTINGS.copy())
+        st.info("↩️ Configuration réinitialisée aux valeurs par défaut.")
+        st.rerun()
+
+

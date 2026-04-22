@@ -1,3 +1,5 @@
+import datetime
+import io
 import os
 import tempfile
 import warnings
@@ -14,7 +16,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from data_pipeline import show_pipeline_page, load_user_model
+from data_pipeline import show_pipeline_page, load_user_model, triage_risque
 from shap_explainer import show_shap_page
 from email_reports import generate_pdf_report, send_pdf_via_sendgrid
 from auth import show_auth_page
@@ -392,6 +394,9 @@ def build_input_df(tenure, charges, contract, internet, security):
         elif 'OnlineSecurity' in col:             inp[col] = int(security)
     return pd.DataFrame([inp])[feature_names]
 
+# triage_risque est importé depuis data_pipeline
+
+
 def chatbot_response(question):
     q = question.lower()
     n_urgent = len(df[df['ChurnProba'] > 0.6])
@@ -651,6 +656,7 @@ elif section == "🔮 AI Prediction":
     </div>
     """, unsafe_allow_html=True)
 
+
     mode = st.radio("", ["🚀 Quick Prediction (Auto-fill with average values)", "✏️ Manual Input (Customize all features)"],
                     horizontal=True)
 
@@ -799,6 +805,8 @@ elif section == "🌟 Future Scenarios":
         if 'tenure' in df_scenario.columns:
             df_scenario['tenure'] *= (1 + tenure_impact / 100)
             df_scenario['tenure'] = df_scenario['tenure'].clip(1, 100)
+        if all(c in df_scenario.columns for c in ['MonthlyCharges', 'tenure', 'TotalCharges']):
+            df_scenario['TotalCharges'] = df_scenario['MonthlyCharges'] * df_scenario['tenure']
 
         X_scenario    = df_scenario.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1, errors='ignore')
         X_current     = df.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1, errors='ignore')
@@ -870,13 +878,13 @@ elif section == "⚡ Simulateur What-If":
     with c1:
         fg_a, la, ca, _ = risk_gauge(score_a)
         st.markdown("**Avant l'action**")
-        st.plotly_chart(fg_a, use_container_width=True)
+        st.plotly_chart(fg_a, use_container_width=True, key="gauge_avant")
         st.markdown(f"<div style='text-align:center;color:{ca};font-weight:700;font-size:1.2rem;'>{score_a*100:.1f}% — {la}</div>", unsafe_allow_html=True)
 
     with c3:
         fg_b, lb, cb, _ = risk_gauge(score_b)
         st.markdown("**Après l'action**")
-        st.plotly_chart(fg_b, use_container_width=True)
+        st.plotly_chart(fg_b, use_container_width=True, key="gauge_apres")
         st.markdown(f"<div style='text-align:center;color:{cb};font-weight:700;font-size:1.2rem;'>{score_b*100:.1f}% — {lb}</div>", unsafe_allow_html=True)
 
     with c2:
@@ -922,14 +930,29 @@ elif section == "🚨 Alertes Clients":
     elif tri == "Charges décroissantes":   clients_risque = clients_risque.sort_values('MonthlyCharges', ascending=False)
     else:                                  clients_risque = clients_risque.sort_values('tenure', ascending=True)
 
+    # ── Moteur de triage statistique ────────────────────────────────
+    clients_risque = triage_risque(clients_risque, df)
+
     ca, cb, cc = st.columns(3)
     ca.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{len(clients_risque)}</h2><p>Clients à risque >{seuil}%</p></div>""", unsafe_allow_html=True)
     cb.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{clients_risque['ChurnProba'].mean()*100:.1f}%</h2><p>Score moyen du groupe</p></div>""", unsafe_allow_html=True)
     cc.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{clients_risque['MonthlyCharges'].sum():.0f}€</h2><p>Revenu mensuel à risque</p></div>""", unsafe_allow_html=True)
 
+    # ── Filtre par Motif de Risque ───────────────────────────────────
     st.markdown("---")
-    show_cols = [c for c in ['tenure', 'MonthlyCharges', 'TotalCharges', 'SeniorCitizen', 'ChurnProba', 'RiskLevel'] if c in clients_risque.columns]
-    disp = clients_risque[show_cols].head(50).copy()
+    motifs_disponibles = ["Tous les motifs"] + sorted(clients_risque['Motif de Risque'].unique().tolist())
+    motif_selectionne = st.selectbox("🔍 Filtrer par Motif de Risque", motifs_disponibles, key="filtre_motif")
+
+    if motif_selectionne == "Tous les motifs":
+        clients_filtres = clients_risque
+    else:
+        clients_filtres = clients_risque[clients_risque['Motif de Risque'] == motif_selectionne]
+
+    # ── Tableau filtré ───────────────────────────────────────────────
+    show_cols = [c for c in ['tenure', 'MonthlyCharges', 'TotalCharges', 'SeniorCitizen', 'ChurnProba', 'RiskLevel'] if c in clients_filtres.columns]
+    show_cols += ['Motif de Risque', 'Action Suggérée']
+
+    disp = clients_filtres[show_cols].head(50).copy()
     disp.index = range(1, len(disp) + 1)
     disp['ChurnProba'] = disp['ChurnProba'].apply(lambda x: f"{x*100:.1f}%")
     disp = disp.rename(columns={
@@ -939,9 +962,29 @@ elif section == "🚨 Alertes Clients":
     })
     st.dataframe(disp, use_container_width=True)
 
-    csv_alert = clients_risque.drop(['ChurnProba', 'RiskLevel'], axis=1).to_csv(index=False).encode('utf-8')
-    st.download_button(f"📥 Exporter {len(clients_risque)} clients à risque (CSV)",
-                       csv_alert, f"alertes_{seuil}pct.csv", "text/csv")
+    # ── Export Excel ciblé ───────────────────────────────────────────
+    def _to_excel(dataframe: pd.DataFrame) -> bytes:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            export_df = dataframe.drop(columns=['ChurnProba', 'RiskLevel'], errors='ignore')
+            export_df.to_excel(writer, index=False, sheet_name='Alertes')
+            workbook  = writer.book
+            worksheet = writer.sheets['Alertes']
+            header_fmt = workbook.add_format({'bold': True, 'bg_color': '#667eea', 'font_color': 'white', 'border': 1})
+            for col_num, col_name in enumerate(export_df.columns):
+                worksheet.write(0, col_num, col_name, header_fmt)
+                worksheet.set_column(col_num, col_num, max(18, len(str(col_name)) + 4))
+        return output.getvalue()
+
+    label_motif = motif_selectionne.replace(' ', '_').replace("'", '').replace('/', '-')[:30]
+    excel_bytes = _to_excel(clients_filtres)
+    st.download_button(
+        label=f"📥 Exporter {len(clients_filtres)} clients — {motif_selectionne} (Excel)",
+        data=excel_bytes,
+        file_name=f"alertes_{seuil}pct_{label_motif}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="export_excel_alertes",
+    )
 
     # Bloc rapport hebdomadaire — à placer juste sous la liste des clients à risque
     st.markdown("---")
@@ -1068,6 +1111,35 @@ elif section == "⏰ Rapports Planifiés":
 
     st.markdown("---")
 
+    # ── Configuration de la diffusion ─────────────────────────────
+    st.markdown("### 📧 Configuration de la diffusion")
+    st.caption(
+        "Ces destinataires recevront les alertes de churn filtrées par motif de risque, "
+        "selon la planification définie ci-dessous."
+    )
+
+    default_emails = st.session_state.get(
+        "report_recipients",
+        "manager1@entreprise.com, manager2@entreprise.com",
+    )
+    recipients_input = st.text_area(
+        "Adresses email des destinataires",
+        value=default_emails,
+        placeholder="manager1@entreprise.com, manager2@entreprise.com",
+        help="Saisissez les adresses email séparées par des virgules.",
+        key="recipients_textarea",
+    )
+
+    if st.button("💾 Enregistrer la liste des managers", use_container_width=True):
+        st.session_state["report_recipients"] = recipients_input.strip()
+        emails_list = [e.strip() for e in recipients_input.split(",") if e.strip()]
+        st.success(
+            f"✅ Configuration sauvegardée — {len(emails_list)} destinataire(s) enregistré(s). "
+            "Ils recevront les alertes filtrées par motif de risque selon la planification ci-dessous."
+        )
+
+    st.markdown("---")
+
     # ── Configuration de la planification ─────────────────────────
     st.markdown("### ⚙️ Configurer la planification")
 
@@ -1076,22 +1148,34 @@ elif section == "⏰ Rapports Planifiés":
         "Jeudi": "thu", "Vendredi": "fri", "Samedi": "sat", "Dimanche": "sun",
     }
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        jour_label = st.selectbox("Jour d'envoi", list(JOURS.keys()), index=0, key="sched_day")
-    with c2:
-        heure = st.number_input("Heure (0-23)", min_value=0, max_value=23, value=8, key="sched_hour")
-    with c3:
-        minute = st.number_input("Minute (0-59)", min_value=0, max_value=59, value=0, key="sched_min")
+    jours_selectionnes = st.multiselect(
+        "Jours d'envoi",
+        options=list(JOURS.keys()),
+        default=["Lundi"],
+        key="sched_days",
+    )
+    heure_envoi = st.time_input(
+        "Heure d'envoi du rapport",
+        value=datetime.time(8, 0),
+        key="sched_time",
+    )
 
     if st.button("💾 Enregistrer la planification", use_container_width=True):
-        sched.update_schedule(
-            day_of_week=JOURS[jour_label],
-            hour=int(heure),
-            minute=int(minute),
-        )
-        st.success(f"✅ Planification mise à jour : chaque {jour_label} à {int(heure):02d}:{int(minute):02d}")
-        st.rerun()
+        if not jours_selectionnes:
+            st.warning("⚠️ Veuillez sélectionner au moins un jour d'envoi.")
+        else:
+            jours_cron = ",".join(JOURS[j] for j in jours_selectionnes)
+            sched.update_schedule(
+                day_of_week=jours_cron,
+                hour=heure_envoi.hour,
+                minute=heure_envoi.minute,
+            )
+            jours_str = ", ".join(jours_selectionnes)
+            st.success(
+                f"✅ Planification mise à jour : chaque {jours_str} "
+                f"à {heure_envoi.strftime('%H:%M')}."
+            )
+            st.rerun()
 
     st.markdown("---")
 
