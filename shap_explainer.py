@@ -318,18 +318,30 @@ def show_shap_page(model, df, feature_names):
         show_fields = ["tenure", "MonthlyCharges", "TotalCharges", "SeniorCitizen"]
         show_fields = [f for f in show_fields if f in client_data.index]
 
-        cols = st.columns(len(show_fields))
+        # Fallback dynamique : prendre les 4 premières features numériques continues
+        if not show_fields:
+            show_fields = [
+                f for f in feature_names
+                if f in df.columns
+                and pd.api.types.is_numeric_dtype(df[f])
+                and df[f].nunique() > 2
+            ][:4]
+
         labels_profile = {
             "tenure":         "Ancienneté (mois)",
             "MonthlyCharges": "Charges mensuelles",
             "TotalCharges":   "Total charges",
             "SeniorCitizen":  "Client senior",
         }
-        for i, field in enumerate(show_fields):
-            val = client_data[field]
-            if isinstance(val, float):
-                val = f"{val:.2f}"
-            cols[i].metric(labels_profile.get(field, field), val)
+        if not show_fields:
+            st.info("ℹ️ Aucun champ de profil disponible pour ce client.")
+        else:
+            cols = st.columns(len(show_fields))
+            for i, field in enumerate(show_fields):
+                val = client_data[field]
+                if isinstance(val, float):
+                    val = f"{val:.2f}"
+                cols[i].metric(labels_profile.get(field, field), val)
 
     # ── VUE 4 : SCATTER — CHARGES VS SHAP ───────────────────────
     st.markdown("---")

@@ -38,9 +38,10 @@ churn_prediction_dashboard.py (Streamlit entry point)
 ## Critical Design Patterns
 
 ### Database & Auth
-- **SQLite schema**: `users` table with `email` (PK), `password_hash`, `hash_type`, `company`, `secteur`, `created_at`
+- **SQLite schema**: two tables — `users` (`email` PK, `password_hash`, `hash_type`, `company`, `secteur`, `created_at`) and `reward_primitives` (`id` PK autoincrement, `user_email`, `label`, `action`, `cible`, `valeur`, `duree`, `created_at`)
 - **Auth migration**: Old SHA256 hashes are auto-rehashed to bcrypt on first successful login
 - **Sector-specific columns**: `SECTEUR_COLUMNS` dict in `data_pipeline.py` defines required columns per sector
+- **Reward primitives CRUD**: `get_reward_primitives`, `create_reward_primitive`, `delete_reward_primitive` in `database.py`
 
 ### Streamlit Session State
 - `logged_in` (bool): Authentication guard
@@ -56,8 +57,19 @@ churn_prediction_dashboard.py (Streamlit entry point)
 
 ### Column Detection
 - `detect_columns(df, secteur)` in `data_pipeline.py` auto-finds target column and required features
-- Falls back to manual mapping if auto-detection fails
-- Each sector has specific required columns and target column hints
+- Strips whitespace from all column names before detection
+- Uses `GLOBAL_TARGET_SYNONYMS` (20+ universal synonyms) merged with sector-specific `target_hints`
+- If no target found, `show_pipeline_page()` presents an interactive `st.selectbox` of binary columns — no hard failure
+- Each page (Overview, Visual Analytics, What-If, Alertes) uses dynamic column lookup for tenure/charges synonyms, with graceful `st.info` fallback if absent
+
+### Loyalty & Webhook
+- Dynamic rewards catalog stored in `reward_primitives` SQLite table (per user)
+- Campaign trigger sends a structured JSON payload via `_send_webhook(url, payload)` in `loyalty_page.py`
+- Webhook URL configured in admin panel Bloc 4, saved in `loyalty_settings.json` per user
+
+### What-If Simulator
+- Fully sector-agnostic: `_whatsif_spec(col)` classifies each feature as `constant/binary/discrete/continuous`
+- Auto-generates form controls (sliders, selectbox, number_input) from actual model feature names
 
 ## Common Commands
 
@@ -73,7 +85,7 @@ streamlit run churn_prediction_dashboard.py
 python -c "from database import init_db; init_db()"
 
 # Check database schema
-sqlite3 retainiq.db ".schema users"
+sqlite3 retainiq.db ".schema"
 
 # View scheduler status (in Streamlit sidebar, "Scheduler Status" section)
 # Logs saved to retainiq.log (if configured)
@@ -95,17 +107,21 @@ sqlite3 retainiq.db ".schema users"
 ## Testing & Debugging Tips
 
 - **Check auth**: SQLite query `SELECT email, company, secteur FROM users;` to see registered users
+- **Check reward catalog**: `SELECT user_email, label, action, valeur FROM reward_primitives;`
 - **Verify scheduler**: Check `scheduler.run_history` and `scheduler.next_run_time` in Streamlit sidebar
 - **Model files**: Models saved as `model_[email].pkl` in working directory, load with `pickle.load()`
 - **SHAP caching**: If explainer is slow, check `shap_cache` in session state
 - **SendGrid**: Set `SENDGRID_API_KEY` in `.env` (loaded by `python-dotenv`)
+- **Webhook**: Set URL in admin panel Bloc 4; test with a free service like webhook.site
 
 ## Known Limitations & TODOs
 
-- Weekly scheduler runs in UTC (verify timezone requirements)
+- Weekly scheduler runs in Europe/Paris timezone
 - No admin UI for user management (direct SQLite queries needed)
 - SHAP explainer caches entire model in memory (can be large for big datasets)
 - No A/B testing framework (all users get same model)
+- Webhook has no HMAC signature — add for production use
+- `loyalty_settings.json` is a flat JSON file; not suitable for high-concurrency multi-user deployment
 
 ## Environment Variables
 

@@ -49,7 +49,7 @@
 13. [Dictionnaire des Fonctions Core](#13-dictionnaire-des-fonctions-core)
 14. [Pages du dashboard (toutes)](#14-pages-du-dashboard-toutes)
 15. [Système de segmentation clients v2.0](#15-système-de-segmentation-clients-v20)
-16. [Catalogue de récompenses par secteur](#16-catalogue-de-récompenses-par-secteur)
+16. [Catalogue de récompenses](#16-catalogue-de-récompenses)
 17. [Scheduler — deux jobs automatiques](#17-scheduler--deux-jobs-automatiques)
 18. [Sécurité et Garde-Fous](#18-sécurité-et-garde-fous)
 19. [Limites connues et pistes d'amélioration](#19-limites-connues-et-pistes-damélioration)
@@ -87,24 +87,27 @@ RetainIQ est conçu pour s'intégrer nativement à tout écosystème CRM/ERP via
 
 ```json
 {
-  "event":         "campaign_trigger",
-  "timestamp":     "2025-01-15T09:32:00Z",
-  "company":       "NomEntreprise",
-  "secteur":       "📱 Télécom",
-  "reward":        "Bon de réduction -20%",
-  "segment":       "Cohorte A — Sauvetage",
-  "clients": [
+  "event":     "loyalty_campaign_triggered",
+  "timestamp": "2025-05-01T10:32:00",
+  "company":   "NomEntreprise",
+  "secteur":   "📱 Télécom",
+  "reward": {
+    "id": 3, "label": "Cadeau Ancienneté",
+    "action": "Offrir", "cible": "Clients 12+ mois",
+    "valeur": "1 mois gratuit", "duree": "30 jours"
+  },
+  "targeting": {
+    "priority_filter": "🔴 Critique (>80%)",
+    "motif_filter":    "Pression tarifaire",
+    "total_clients":   12
+  },
+  "clients_sample": [
     {
-      "id":          "CUST-0042",
-      "churn_score": 0.87,
-      "priority":    "🔴 Critique (>80%)",
-      "risk_reason": "Pression tarifaire",
-      "action":      "Audit des services souscrits + offre d'optimisation de coût"
+      "churn_proba": 0.87,
+      "priorite":    "🔴 Critique (>80%)",
+      "motif": "Pression tarifaire"
     }
-  ],
-  "total_clients": 1,
-  "estimated_cost": 18.50,
-  "budget_remaining": 4981.50
+  ]
 }
 ```
 
@@ -157,6 +160,12 @@ La plateforme couvre cinq secteurs métier :
 | Navigation conditionnelle (Blank Slate vs modèle actif) | **AMÉLIORÉ** | `churn_prediction_dashboard.py` |
 | Fallback local pour rapports PDF (si SendGrid absent) | **AMÉLIORÉ** | `email_reports.py` |
 | Fuseau horaire Europe/Paris pour le scheduler | **AMÉLIORÉ** | `scheduler.py` |
+| **Catalogue de récompenses dynamique (SQLite)** — création/suppression depuis l'UI | **NOUVEAU v2.1** | `loyalty_page.py`, `database.py` |
+| **Webhook HTTP configurable** sur déclenchement de campagne (payload JSON structuré) | **NOUVEAU v2.1** | `loyalty_page.py` |
+| **Simulateur What-If agnostique au secteur** — formulaire auto-généré depuis les features réelles | **AMÉLIORÉ v2.1** | `churn_prediction_dashboard.py` |
+| **Détection cible améliorée** — `GLOBAL_TARGET_SYNONYMS` + nettoyage espaces + fallback interactif | **AMÉLIORÉ v2.1** | `data_pipeline.py` |
+| **Visualisations agnostiques** — Overview, Visual Analytics, Alertes adaptés à tout secteur | **AMÉLIORÉ v2.1** | `churn_prediction_dashboard.py` |
+| **Profil SHAP dynamique** — fallback sur 4 features numériques si champs standards absents | **AMÉLIORÉ v2.1** | `shap_explainer.py` |
 
 ---
 
@@ -182,7 +191,7 @@ churn_prediction_dashboard.py  ← Point d'entrée Streamlit (routeur de pages)
 │   ├── weekly_report_job.py   ← Job hebdo lundi 8h — PDF + SendGrid
 │   └── loyalty_messages_job.py← Job mensuel 1er du mois 10h — Gmail SMTP
 │
-└── retainiq.db                ← Base SQLite (table users)
+└── retainiq.db                ← Base SQLite (tables : users, reward_primitives)
 ```
 
 **Flux de données principal :**
@@ -300,6 +309,32 @@ CREATE TABLE IF NOT EXISTS users (
     company        TEXT NOT NULL DEFAULT '',
     secteur        TEXT NOT NULL DEFAULT '',
     created_at     TEXT NOT NULL
+);
+```
+
+### Table `reward_primitives`
+
+| Colonne | Type | Contraintes | Description |
+|---------|------|-------------|-------------|
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Identifiant unique auto-incrémenté |
+| `user_email` | TEXT | NOT NULL | Email de l'utilisateur propriétaire |
+| `label` | TEXT | NOT NULL | Nom personnalisé de la récompense |
+| `action` | TEXT | NOT NULL DEFAULT `''` | Verbe d'action (ex : « Offrir », « Appliquer ») |
+| `cible` | TEXT | NOT NULL DEFAULT `''` | Segment visé (ex : « Clients 12+ mois à risque ») |
+| `valeur` | TEXT | NOT NULL DEFAULT `''` | Avantage consenti (ex : « -20% », « 1 mois gratuit ») |
+| `duree` | TEXT | NOT NULL DEFAULT `''` | Durée de validité (ex : « 30 jours ») |
+| `created_at` | TEXT | NOT NULL | Date de création ISO 8601 |
+
+```sql
+CREATE TABLE IF NOT EXISTS reward_primitives (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_email  TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    action      TEXT NOT NULL DEFAULT '',
+    cible       TEXT NOT NULL DEFAULT '',
+    valeur      TEXT NOT NULL DEFAULT '',
+    duree       TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
 );
 ```
 
@@ -456,8 +491,9 @@ L'application s'ouvre sur `http://localhost:8501`.
 python -c "from database import init_db; init_db()"
 
 # Inspecter la base de données
-sqlite3 retainiq.db ".schema users"
+sqlite3 retainiq.db ".schema"
 sqlite3 retainiq.db "SELECT email, company, secteur FROM users;"
+sqlite3 retainiq.db "SELECT user_email, label, action, valeur FROM reward_primitives;"
 
 # Tester le job fidélité en standalone
 python loyalty_messages_job.py
@@ -545,10 +581,14 @@ Cette section constitue la documentation de référence des quatre processus mé
 La détection s'effectue selon l'algorithme suivant :
 
 ```
-1. Chercher la colonne cible par target_hints du secteur (comparaison case-insensitive)
-2. Si non trouvée → parcourir toutes les colonnes
-   a. Colonne avec exactement 2 valeurs uniques parmi {0,1, yes,no, true,false, oui,non}
-      → Colonne cible auto-détectée + warning utilisateur
+0. Nettoyer les espaces parasites en tête/queue de tous les noms de colonnes (str.strip())
+1. Fusionner target_hints du secteur avec GLOBAL_TARGET_SYNONYMS (20+ synonymes universels)
+   → Comparaison case-insensitive : "churn", "resiliation", "exited", "attrition", etc.
+2. Si non trouvée → fallback interactif :
+   a. Lister toutes les colonnes binaires (nunique() == 2)
+   b. Si aucune → arrêt avec message d'erreur explicite
+   c. Sinon → st.selectbox() pour que l'utilisateur désigne la colonne cible
+      → renommer en "Churn" et relancer la détection
 3. Classifier les colonnes restantes :
    a. Nom contient {id, date, nom, name, email, phone, tel} → ignorée
    b. dtype in [int64, float64]                             → numérique
@@ -725,32 +765,34 @@ else:  # En nature
     total_cumule  = None   # Coût monétaire non quantifiable
 ```
 
-Le **payload JSON** simulé transmissible à un webhook CRM/ERP est structuré comme suit :
+Le **payload JSON** réellement envoyé au webhook configuré est structuré comme suit :
 
 ```json
 {
-  "event":          "campaign_trigger",
-  "timestamp":      "2025-01-15T09:32:00Z",
-  "company":        "Entreprise XYZ",
-  "secteur":        "📱 Télécom",
-  "reward":         "Bon de réduction -20%",
-  "segment":        "Cohorte A — Sauvetage",
-  "filtre_priorite":"🔴 Critique (>80%)",
-  "filtre_motif":   "Pression tarifaire",
-  "nb_clients":     12,
-  "cout_unitaire":  18.50,
-  "total_cumule":   222.00,
-  "budget_restant": 4778.00,
-  "clients": [
-    {
-      "churn_score": 0.91,
-      "priority":    "🔴 Critique (>80%)",
-      "risk_reason": "Pression tarifaire",
-      "action":      "Audit des services souscrits + offre d'optimisation de coût"
-    }
+  "event":     "loyalty_campaign_triggered",
+  "timestamp": "2025-05-01T10:32:00",
+  "company":   "Entreprise XYZ",
+  "secteur":   "📱 Télécom",
+  "reward": {
+    "id":     3,
+    "label":  "Cadeau Ancienneté",
+    "action": "Offrir",
+    "cible":  "Clients 12+ mois à risque",
+    "valeur": "1 mois gratuit",
+    "duree":  "30 jours"
+  },
+  "targeting": {
+    "priority_filter": "🔴 Critique (>80%)",
+    "motif_filter":    "Pression tarifaire",
+    "total_clients":   12
+  },
+  "clients_sample": [
+    {"churn_proba": 0.9142, "priorite": "🔴 Critique (>80%)", "motif": "Pression tarifaire"}
   ]
 }
 ```
+
+Le webhook est configuré depuis le panneau admin (Bloc 4 — Webhook). Si l'URL est vide ou invalide, le déclenchement de campagne reste fonctionnel mais sans appel réseau.
 
 #### Phase 4 — Validation et déclenchement
 
@@ -998,8 +1040,8 @@ Le modèle entraîné est sérialisé avec pickle sous la forme :
 
 **Fichier :** `churn_prediction_dashboard.py`
 
-- **Overview :** 4 KPIs (Total Clients, Taux Churn, Précision Modèle, Clients Urgents), tableau des 10 premiers clients avec score, export CSV complet
-- **Visual Analytics :** Pie rétention/churn, histogramme MonthlyCharges vs Churn, boxplot Tenure vs Churn, top 10 features importance XGBoost, distribution churn (Seaborn), histogramme Tenure (Seaborn), matrice de corrélation
+- **Overview :** 4 KPIs (Total Clients, Taux Churn, Précision Modèle, Clients Urgents), tableau des 10 premiers clients avec score, export CSV complet. Les colonnes tenure et charges sont détectées dynamiquement par lookup dans une liste de synonymes (`tenure`, `anciennete_mois`, `mois_inscrit`, `mois_client` / `MonthlyCharges`, `abonnement_mensuel`, `mrr`, `panier_moyen`) — la page fonctionne quel que soit le secteur.
+- **Visual Analytics :** Pie rétention/churn, histogramme des charges vs Churn *(conditionnel : affiché uniquement si une colonne de charges est détectée)*, boxplot ancienneté vs Churn *(conditionnel)*, top 10 features importance XGBoost, distribution churn (Seaborn), histogramme ancienneté *(conditionnel)*, matrice de corrélation. Chaque graphique conditionnel affiche un message `st.info` explicatif si la colonne correspondante est absente du dataset.
 
 ### 11.6 Prédiction IA et jauge de risque
 
@@ -1023,14 +1065,18 @@ Résultat : jauge Plotly Indicator (mode gauge+number) colorée selon le niveau 
 
 **Fichier :** `churn_prediction_dashboard.py` — Page `⚡ Simulateur What-If`
 
-Permet de comparer deux situations (avant/après une action commerciale) :
+Permet de comparer deux situations (avant/après une action commerciale). Le simulateur est **entièrement agnostique au secteur** : il génère automatiquement les contrôles (sliders, selectbox, number_input) à partir des features réelles du modèle entraîné.
 
-1. L'utilisateur configure la **situation actuelle** (tenure, charges, contrat, internet, sécurité)
-2. Il configure la **situation cible** (après remise, changement de contrat, etc.)
-3. `build_input_df()` construit un DataFrame aligné sur `feature_names` pour chaque situation
-4. `model.predict_proba()` calcule `score_a` et `score_b`
-5. Affichage côte à côte : jauge avant, delta (+ ou −), jauge après
-6. Recommandations via `get_recommendations(score, tenure, charges)`
+1. **Analyse automatique des features** via `_whatsif_spec(col)` — classifie chaque colonne :
+   - `constant` : valeur fixe, non modifiable
+   - `binary` : selectbox Oui/Non (0/1)
+   - `discrete` : selectbox de valeurs entières uniques (≤ 10 valeurs)
+   - `continuous` : slider (min, max, médiane)
+2. L'utilisateur configure la **situation actuelle** et la **situation cible** via des formulaires auto-générés côte à côte
+3. `model.predict_proba(pd.DataFrame([row]))` calcule `score_a` et `score_b`
+4. Affichage côte à côte : jauge avant, delta (+ ou −), jauge après
+5. Économie client affichée si une colonne de charges est détectable parmi les inputs
+6. Recommandations via `get_recommendations(score, tenure_val, charges_val)` avec lookup dynamique des colonnes tenure/charges
 
 ### 11.8 Alertes Clients
 
@@ -1038,8 +1084,8 @@ Permet de comparer deux situations (avant/après une action commerciale) :
 
 - Slider de seuil (30%–90%) pour filtrer `df[df['ChurnProba'] > seuil]`
 - Filtre additionnel par Motif de Risque (issu du moteur de triage)
-- Tri par score décroissant, charges décroissantes, ou ancienneté croissante
-- KPIs : nombre de clients à risque, score moyen, revenu mensuel menacé
+- Tri par score décroissant, charges décroissantes ou ancienneté croissante — **avec fallback gracieux** : si la colonne correspondante est absente du dataset, le tri par score est appliqué automatiquement et un `st.info` en informe l'utilisateur
+- KPIs : nombre de clients à risque, score moyen, revenu mensuel menacé *(affiché « N/A » si aucune colonne de charges n'est détectée)*
 - Tableau paginé des 50 premiers + **export Excel formaté** (xlsxwriter, en-têtes colorés)
 - Bloc envoi manuel de rapport PDF via SendGrid (avec pré-remplissage email `session_state`)
 - 3 fiches d'actions recommandées (appel, offre, email)
@@ -1052,7 +1098,7 @@ Permet de comparer deux situations (avant/après une action commerciale) :
 
 **Vue 2 — Impact positif vs négatif :** Barres rouges (augmentent le churn) et vertes (le réduisent), avec ligne centrale à zéro
 
-**Vue 3 — Explication individuelle :** Sélecteur de client (0–100), graphique waterfall SHAP, explication en langage naturel générée par `get_shap_explanation_text()`, profil complet du client
+**Vue 3 — Explication individuelle :** Sélecteur de client (0–100), graphique waterfall SHAP, explication en langage naturel générée par `get_shap_explanation_text()`, profil complet du client. Les champs affichés (`tenure`, `MonthlyCharges`, `TotalCharges`, `SeniorCitizen`) sont recherchés par nom exact ; si aucun n'est présent, un fallback dynamique sélectionne les 4 premières features numériques continues du modèle.
 
 **Vue 4 — Scatter charges vs SHAP :** Nuage de points MonthlyCharges × Impact SHAP, coloré par score de risque
 
@@ -1079,11 +1125,43 @@ Chatbot basé sur des règles avec correspondance de mots-clés en langue nature
 
 5 questions rapides pré-configurées en boutons.
 
-### 11.11 Programme de Fidélité (NOUVEAU v2.0)
+### 11.11 Programme de Fidélité
 
-**Fichiers :** `loyalty_page.py`, `loyalty_config.py`, `loyalty_messages_job.py`
+**Fichiers :** `loyalty_page.py`, `loyalty_config.py`, `loyalty_messages_job.py`, `database.py`
 
-C'est la grande nouveauté de la v2.0 : la plateforme passe de l'IA **prédictive** à l'IA **prescriptive**.
+La plateforme passe de l'IA **prédictive** à l'IA **prescriptive**. Deux améliorations majeures ont été apportées en v2.1 :
+
+#### Catalogue de récompenses dynamique (SQLite)
+
+Les récompenses ne sont plus une liste statique codée en dur. L'utilisateur crée et supprime ses propres récompenses depuis un formulaire dans la page Fidélité (`st.form("form_add_reward")`). Chaque récompense est stockée dans la table `reward_primitives` (voir Section 6) avec 4 primitives : **Action**, **Cible**, **Valeur**, **Durée**. Si le catalogue est vide, le bouton « Déclencher la campagne » est désactivé avec un message guidant l'utilisateur.
+
+#### Webhook HTTP sur déclenchement de campagne
+
+Un champ URL webhook est configurable dans le panneau admin (Bloc 4). À chaque déclenchement confirmé, `_send_webhook(url, payload)` effectue un `POST` JSON avec le payload structuré suivant :
+
+```json
+{
+  "event":     "loyalty_campaign_triggered",
+  "timestamp": "2025-05-01T10:32:00",
+  "company":   "Entreprise XYZ",
+  "secteur":   "📱 Télécom",
+  "reward": {
+    "id": 3, "label": "Cadeau Ancienneté",
+    "action": "Offrir", "cible": "Clients 12+ mois à risque",
+    "valeur": "1 mois gratuit", "duree": "30 jours"
+  },
+  "targeting": {
+    "priority_filter": "🔴 Critique (>80%)",
+    "motif_filter":    "Pression tarifaire",
+    "total_clients":   12
+  },
+  "clients_sample": [
+    {"churn_proba": 0.9142, "priorite": "🔴 Critique (>80%)", "motif": "Pression tarifaire"}
+  ]
+}
+```
+
+Le payload inclut un échantillon des 50 premiers clients ciblés. L'URL est sauvegardée dans `loyalty_settings.json` par utilisateur.
 
 #### Segmentation en 3 cohortes (`segment_clients(df, secteur)`)
 
@@ -1180,12 +1258,15 @@ Couche d'accès SQLite pure — aucune dépendance vers les autres modules du pr
 | Fonction | Signature | Description |
 |----------|-----------|-------------|
 | `get_connection` | `() → contextmanager` | Context manager SQLite avec WAL mode, row_factory, commit/rollback automatique |
-| `init_db` | `()` | `CREATE TABLE IF NOT EXISTS users` — idempotent, appelé à l'import |
+| `init_db` | `()` | `CREATE TABLE IF NOT EXISTS users` + `reward_primitives` — idempotent, appelé à l'import |
 | `get_user` | `(email: str) → dict | None` | `SELECT * FROM users WHERE email = ?` — retourne dict ou None |
 | `create_user` | `(email, password_hash, company, secteur, hash_type) → None` | `INSERT INTO users` — lève `ValueError` si email déjà utilisé |
 | `update_user_hash` | `(email, new_hash, new_type) → None` | `UPDATE users SET password_hash, hash_type` — migration bcrypt |
 | `get_all_users` | `() → dict` | Retourne tous les users sous forme `{email: {company, secteur, created_at}}` |
 | `user_exists` | `(email: str) → bool` | Alias de `get_user(email) is not None` |
+| `get_reward_primitives` | `(user_email: str) → list[dict]` | Retourne toutes les récompenses de l'utilisateur triées par `id` |
+| `create_reward_primitive` | `(user_email, label, action, cible, valeur, duree) → int` | Insère une récompense, retourne l'`id` auto-incrémenté |
+| `delete_reward_primitive` | `(primitive_id: int) → None` | Supprime la récompense identifiée par son `id` |
 
 ---
 
@@ -1197,17 +1278,21 @@ Pipeline ML complet : de l'upload CSV à l'entraînement XGBoost. Contient aussi
 
 Dictionnaire de configuration par secteur définissant `required` (colonnes requises), `target_hints` (noms possibles de la colonne cible), `description` (texte d'aide).
 
+#### Constante `GLOBAL_TARGET_SYNONYMS`
+
+Liste de 20+ synonymes universels pour la détection de la colonne cible, fusionnée avec les `target_hints` du secteur : `"churn"`, `"resiliation"`, `"résiliation"`, `"exited"`, `"status"`, `"attrition"`, `"churned"`, `"inactif"`, `"desinscription"`, etc.
+
 #### Fonctions
 
 | Fonction | Signature | Description |
 |----------|-----------|-------------|
-| `detect_columns` | `(df, secteur) → dict` | Détecte `target_col`, `numeric_cols`, `categorical_cols`, `ignored_cols`, `warnings`. Recherche d'abord par `target_hints`, puis fallback binaire. |
+| `detect_columns` | `(df, secteur) → dict` | Détecte `target_col`, `numeric_cols`, `categorical_cols`, `ignored_cols`, `warnings`. Nettoie d'abord les espaces parasites des noms de colonnes. Fusionne `target_hints` secteur + `GLOBAL_TARGET_SYNONYMS`. Si aucune cible trouvée, renvoie un rapport avec `target_col=None` pour déclencher le fallback interactif. |
 | `clean_data` | `(df, detection_report) → (df_clean, cleaning_log)` | Supprime colonnes ignorées, impute numériques (médiane), encode catégorielles (one-hot), mappe cible (Yes/No → 1/0), renomme en `"Churn"`. |
 | `quality_report` | `(df_raw, df_clean, detection_report) → dict` | Score 0-100 avec pénalités : churn < 5% (−20), churn > 60% (−15), missing > 20% (−20), missing > 5% (−5), < 200 lignes (−30), < 500 lignes (−10), pas de cible (−40). |
 | `train_custom_model` | `(df_clean, user_email) → (model, metrics, error)` | Split stratifié 80/20, XGBoost avec `scale_pos_weight` auto, sauvegarde `.pkl` et `.csv`. Retourne `(None, None, msg_erreur)` si problème. |
 | `load_user_model` | `(user_email) → (model, features, df)` | Charge `model_[safe].pkl` et `data_[safe].csv`. Retourne `(None, None, None)` si absent. |
 | `triage_risque` | `(df_risque, df_full) → df` | Moteur de triage statistique (P75). Ajoute `Motif de Risque` et `Action Suggérée`. Agnostique au secteur. |
-| `show_pipeline_page` | `(user_email, secteur)` | Page Streamlit complète — orchestre les 6 étapes avec UI progressive. |
+| `show_pipeline_page` | `(user_email, secteur)` | Page Streamlit complète — orchestre les 6 étapes avec UI progressive. Gère le fallback interactif de sélection de colonne cible : si `detect_columns()` ne trouve pas de cible, liste les colonnes binaires disponibles et propose un `st.selectbox`. |
 
 ---
 
@@ -1305,15 +1390,16 @@ Singleton APScheduler thread-safe. Persiste entre les reruns Streamlit car Pytho
 
 ### `loyalty_page.py`
 
-Page Streamlit complète du Programme de Fidélité. Gère l'enrichissement triage, les filtres de ciblage croisé, la simulation budgétaire et la configuration des campagnes.
+Page Streamlit complète du Programme de Fidélité. Gère l'enrichissement triage, les filtres de ciblage croisé, le catalogue de récompenses dynamique (SQLite), le déclenchement webhook et la configuration des campagnes.
 
 | Fonction | Signature | Description |
 |----------|-----------|-------------|
 | `_load_settings` | `(user_email) → dict` | Charge depuis `loyalty_settings.json` les paramètres de l'utilisateur. Merge avec `_DEFAULT_SETTINGS`. |
 | `_save_settings` | `(user_email, settings) → None` | Sauvegarde dans `loyalty_settings.json` au format `{email: settings}`. |
+| `_send_webhook` | `(url: str, payload: dict) → (bool, str)` | POST JSON vers `url` (timeout 10 s). Retourne `(True, "HTTP 200")` ou `(False, message_erreur)`. Rejette les URLs non-HTTP. |
 | `segment_clients` | `(df, secteur) → (cohorte_a, cohorte_b, champions)` | Retourne 3 DataFrames selon `SEGMENTATION_CONFIG`. Ajoute `Priorité` (A) et `Médaille` (B). |
-| `show_loyalty_page` | `(df, secteur, user_company, user_email)` | Page principale : KPIs, tableau de ciblage croisé, simulation Total Cumulé, déclenchement campagne, config. |
-| `_render_config_panel` | `(user_email, user_company, secteur)` | Panneau expander de 3 blocs (seuils, valeur, garde-fous) avec formulaire Streamlit. |
+| `show_loyalty_page` | `(df, secteur, user_company, user_email)` | Page principale : KPIs, tableau de ciblage croisé, catalogue de récompenses dynamique, déclenchement campagne avec webhook, config. |
+| `_render_config_panel` | `(user_email, user_company, secteur)` | Panneau expander de 4 blocs (seuils, valeur, garde-fous, **webhook**) avec formulaire Streamlit. |
 
 **Paramètres par défaut `_DEFAULT_SETTINGS` :**
 
@@ -1331,6 +1417,7 @@ Page Streamlit complète du Programme de Fidélité. Gère l'enrichissement tria
 | `periode_carence` | `3` | Mois entre deux récompenses |
 | `campagne_sauvetage` | `True` | Activation campagne A |
 | `campagne_fidelite` | `True` | Activation campagne B |
+| `webhook_url` | `""` | URL webhook de déclenchement campagne (vide = désactivé) |
 
 ---
 
@@ -1438,6 +1525,10 @@ Cette section recense les fonctions principales de l'application, leur rôle mé
 |----------|--------|-------------|--------|--------|
 | `segment_clients` | `loyalty_page` | Classer tous les clients en 3 cohortes de fidélité | `(df, secteur: str)` | `(cohorte_a, cohorte_b, champions)` — 3 DataFrames |
 | `_load_settings` | `loyalty_page` | Charger les règles de campagne de l'utilisateur | `(user_email: str)` | `dict` (fusionné avec `_DEFAULT_SETTINGS`) |
+| `_send_webhook` | `loyalty_page` | Envoyer le payload de campagne en POST JSON vers une URL configurée | `(url: str, payload: dict)` | `(bool, message: str)` |
+| `get_reward_primitives` | `database` | Lister les récompenses de l'utilisateur depuis SQLite | `(user_email: str)` | `list[dict]` |
+| `create_reward_primitive` | `database` | Créer une récompense dans le catalogue SQLite | `(user_email, label, action, cible, valeur, duree)` | `int` (id créé) |
+| `delete_reward_primitive` | `database` | Supprimer une récompense du catalogue | `(primitive_id: int)` | `None` |
 | `send_loyalty_messages` | `loyalty_messages_job` | Envoyer les messages de gratitude mensuels aux Champions | `()` | `{status, total_sent, anniversaires, mensuels, erreurs, executed_at}` |
 | `send_weekly_reports` | `weekly_report_job` | Générer et envoyer les rapports PDF hebdomadaires | `()` | `None` (effets de bord : emails + PDF locaux) |
 | `start_scheduler` | `scheduler` | Initialiser le singleton APScheduler avec 2 jobs CRON | `(day_of_week, hour, minute)` | `BackgroundScheduler` |
@@ -1503,9 +1594,17 @@ ChurnProba
 
 ---
 
-## 16. Catalogue de récompenses par secteur
+## 16. Catalogue de récompenses
 
-Le catalogue est défini dans `loyalty_config.py` et couvre **5 secteurs × 2 types × 6 à 8 récompenses** chacun, soit 60+ récompenses préconfigurées adaptées au **marché marocain** (devise MAD).
+### 16.1 Catalogue statique par secteur (`loyalty_config.py`)
+
+Définit **5 secteurs × 2 types × 6 à 8 récompenses** chacun, soit 60+ récompenses préconfigurées adaptées au **marché marocain** (devise MAD). Ce catalogue sert de référence et de source pour le job de fidélité mensuel (`loyalty_messages_job.py`).
+
+### 16.2 Catalogue dynamique par utilisateur (SQLite)
+
+Chaque utilisateur peut créer son propre catalogue de récompenses personnalisées via l'UI (panneau « Gérer le Catalogue » dans la page Fidélité). Ces récompenses sont stockées dans la table `reward_primitives` et sont les seules proposées lors du déclenchement manuel d'une campagne. Structure d'une récompense : **Label** (identifiant unique) + 4 primitives (**Action**, **Cible**, **Valeur**, **Durée**).
+
+> **Note :** Les deux catalogues coexistent. Le catalogue statique alimente les jobs automatiques (Messages de Champions) ; le catalogue dynamique alimente les déclenchements manuels depuis le dashboard.
 
 Chaque secteur définit également :
 - `seuil_sauvetage` : `0.50` (universel)
@@ -1596,13 +1695,21 @@ Ce seuil protège contre les modèles entraînés sur des données manifestement
 
 ### 18.4 Validation de la Colonne Cible
 
-Si `detect_columns()` ne trouve aucune colonne cible, le pipeline s'arrête avant la phase de nettoyage :
+Si `detect_columns()` ne trouve aucune colonne cible, le pipeline déclenche un **fallback interactif** au lieu de bloquer :
 
 ```python
 if not detection["target_col"]:
-    st.error("❌ Impossible de continuer sans colonne cible.")
-    return
+    binary_cols = [col for col in df_raw.columns if df_raw[col].dropna().nunique() == 2]
+    if not binary_cols:
+        st.error("❌ Votre fichier ne contient aucune donnée binaire (ex: 0/1, Oui/Non).")
+        return
+    st.warning("⚠️ Aucune colonne cible n'a pu être détectée automatiquement.")
+    chosen_col = st.selectbox("🎯 Quelle colonne indique le départ du client ?", binary_cols)
+    df_raw = df_raw.rename(columns={chosen_col: "Churn"})
+    detection = detect_columns(df_raw, secteur)   # relance avec la colonne renommée
 ```
+
+Ce garde-fou permet de traiter n'importe quel CSV dont la colonne cible est nommée hors-nomenclature, sans rejeter le dataset.
 
 ### 18.5 Sécurité de l'Authentification
 
@@ -1635,9 +1742,10 @@ if not detection["target_col"]:
 - **Messages de fidélité envoyés à l'email de l'entreprise :** En production, ils devraient être envoyés aux emails des clients finaux
 - **Chatbot basé sur règles :** Pas de LLM — réponses limitées aux mots-clés prédéfinis
 - **SHAP en mémoire :** Le TreeExplainer charge tout le dataset en RAM (problème si dataset > 100 000 lignes)
-- **`loyalty_settings.json` :** Fichier JSON plat partagé — non adapté à un déploiement multi-utilisateurs à haute concurrence
+- **`loyalty_settings.json` :** Fichier JSON plat partagé — non adapté à un déploiement multi-utilisateurs à haute concurrence (les `reward_primitives` elles sont déjà en SQLite)
 - **Pas de multitenancy strict :** Les fichiers modèles sont nommés par email mais dans le répertoire courant
 - **Pas de HTTPS natif :** Streamlit Cloud ou reverse proxy (nginx) requis en production
+- **Webhook sans authentification :** Le POST JSON vers le webhook n'inclut pas de signature HMAC — à sécuriser en production
 
 ### Pistes d'amélioration (v3.0)
 
@@ -1651,12 +1759,12 @@ if not detection["target_col"]:
 - Dashboard d'A/B testing pour les campagnes de rétention
 - Intégration CRM (Salesforce, HubSpot) via API REST — branchement natif du payload JSON simulé
 - API REST (FastAPI) pour découpler le frontend Streamlit du backend ML
-- Webhooks HTTP sortants pour déclencher des automatisations CRM/ERP en temps réel (passage du mode simulé au mode réel)
+- Sécurisation du webhook (signature HMAC-SHA256, liste blanche d'IPs) pour la mise en production
 - Export Excel enrichi avec graphiques intégrés dans la feuille (xlsxwriter `add_chart()`)
 
 ---
 
-> **RetainIQ v2.0** — Projet Industriel 2024-2025
+> **RetainIQ v2.1** — Projet Industriel 2024-2025
 > Stack : XGBoost · Streamlit · APScheduler · SHAP · SendGrid · Gmail SMTP · SQLite · bcrypt · ReportLab · xlsxwriter
-> Architecture : IA Prédictive + IA Prescriptive · API-First · Multi-secteur · Multi-tenant · Marché Marocain
+> Architecture : IA Prédictive + IA Prescriptive · API-First · Webhook HTTP · Catalogue Dynamique · Multi-secteur · Multi-tenant
 > *De la prédiction du churn à l'action en boucle fermée — en un seul déploiement.*

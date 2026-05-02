@@ -44,6 +44,12 @@ SECTEUR_COLUMNS = {
 # ═══════════════════════════════════════════════════════════════
 # ÉTAPE 1 — DÉTECTION AUTOMATIQUE DES COLONNES
 # ═══════════════════════════════════════════════════════════════
+GLOBAL_TARGET_SYNONYMS = [
+    "churn", "resiliation", "résiliation", "exited", "status",
+    "churn_label", "depart", "départ", "departed", "attrition",
+    "churned", "inactif", "desinscription", "désinscription",
+]
+
 def detect_columns(df, secteur):
     """
     Détecte automatiquement :
@@ -60,11 +66,15 @@ def detect_columns(df, secteur):
         "warnings":        [],
     }
 
-    hints = SECTEUR_COLUMNS.get(secteur, {}).get("target_hints", ["churn", "Churn"])
+    # Nettoyer les espaces parasites en tête/queue des noms de colonnes
+    df.columns = df.columns.str.strip()
+
+    sector_hints = SECTEUR_COLUMNS.get(secteur, {}).get("target_hints", [])
+    all_hints = list(dict.fromkeys([h.lower() for h in sector_hints] + GLOBAL_TARGET_SYNONYMS))
 
     # Détecter la colonne cible
     for col in df.columns:
-        if col.lower() in [h.lower() for h in hints]:
+        if col.lower() in all_hints:
             report["target_col"] = col
             break
 
@@ -80,11 +90,6 @@ def detect_columns(df, secteur):
                         f"Colonne cible auto-détectée : '{col}' — vérifiez que c'est bien votre variable de churn."
                     )
                     break
-
-    if not report["target_col"]:
-        report["warnings"].append(
-            "Aucune colonne cible détectée. Renommez votre colonne churn en 'Churn' ou 'churn'."
-        )
 
     # Classifier les autres colonnes
     for col in df.columns:
@@ -463,7 +468,36 @@ def show_pipeline_page(user_email, secteur):
     st.markdown("---")
     st.subheader("🔍 Étape 2 — Détection automatique des colonnes")
 
+    # Nettoyage des noms de colonnes (espaces parasites)
+    df_raw.columns = df_raw.columns.str.strip()
+
     detection = detect_columns(df_raw, secteur)
+
+    # Fallback interactif si aucune colonne cible détectée
+    if not detection["target_col"]:
+        binary_cols = [
+            col for col in df_raw.columns
+            if df_raw[col].dropna().nunique() == 2
+        ]
+        if not binary_cols:
+            st.error(
+                "❌ Votre fichier ne contient aucune donnée binaire (ex: 0/1, Oui/Non). "
+                "Il est impossible d'entraîner l'IA sans historique de Churn. "
+                "Veuillez importer un dataset valide."
+            )
+            return
+        st.warning("⚠️ Aucune colonne cible n'a pu être détectée automatiquement.")
+        chosen_col = st.selectbox(
+            "🎯 Quelle colonne indique le départ du client ?",
+            options=[""] + binary_cols,
+            key="manual_target_col_select",
+            help="Sélectionnez la colonne qui contient 0/1 ou Oui/Non indiquant si le client a churné.",
+        )
+        if not chosen_col:
+            st.info("Sélectionnez la colonne cible pour continuer le pipeline.")
+            return
+        df_raw = df_raw.rename(columns={chosen_col: "Churn"})
+        detection = detect_columns(df_raw, secteur)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Colonne cible",      detection["target_col"] or "Non trouvée")
@@ -474,10 +508,6 @@ def show_pipeline_page(user_email, secteur):
     if detection["warnings"]:
         for w in detection["warnings"]:
             st.warning(f"⚠️ {w}")
-
-    if not detection["target_col"]:
-        st.error("❌ Impossible de continuer sans colonne cible. Renommez votre colonne churn en 'Churn'.")
-        return
 
     with st.expander("📋 Détail des colonnes détectées"):
         col1, col2 = st.columns(2)
@@ -551,8 +581,11 @@ def show_pipeline_page(user_email, secteur):
         st.markdown("**Répartition de votre variable cible :**")
         c1, c2 = st.columns(2)
         total = qr["class_balance"]["churned"] + qr["class_balance"]["active"]
-        c1.metric("Clients churned (1)", f"{qr['class_balance']['churned']} ({qr['class_balance']['churned']/total*100:.1f}%)")
-        c2.metric("Clients actifs (0)",  f"{qr['class_balance']['active']} ({qr['class_balance']['active']/total*100:.1f}%)")
+        if total == 0:
+            st.warning("La colonne cible sélectionnée ne contient pas de valeurs binaires (0/1). Veuillez choisir une colonne Churn valide.")
+        else:
+            c1.metric("Clients churned (1)", f"{qr['class_balance']['churned']} ({qr['class_balance']['churned']/total*100:.1f}%)")
+            c2.metric("Clients actifs (0)",  f"{qr['class_balance']['active']} ({qr['class_balance']['active']/total*100:.1f}%)")
 
     # Visualisation des données nettoyées
     st.markdown("---")

@@ -1,0 +1,14 @@
+# Sécurité
+.env
+
+# Fichiers Python compilés
+__pycache__/
+
+# Bases de données locales
+*.db
+*.sqlite
+
+# Modèles et données lourdes
+*.pkl
+*.csv
+reports_archive/

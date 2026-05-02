@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # loyalty_page.py — Page Streamlit "Programme de Fidélité & Rétention"
-# RetainIQ · Module Fidélité · Marché Marocain
+# RetainIQ · Catalogue dynamique depuis SQLite · Webhook agnostique
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import json
@@ -12,6 +12,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 from loyalty_config import REWARDS_CATALOG, SEGMENTATION_CONFIG, GRATITUDE_MESSAGES
+from database import get_reward_primitives, create_reward_primitive, delete_reward_primitive
 
 # ── FICHIER DE PARAMÈTRES PAR ENTREPRISE ─────────────────────────
 _SETTINGS_FILE = "loyalty_settings.json"
@@ -41,26 +42,25 @@ _DEFAULT_SETTINGS = {
     # Activation
     "campagne_sauvetage":  True,
     "campagne_fidelite":   True,
+    # Webhook
+    "webhook_url":         "",
 }
 
 
 def _load_settings(user_email: str) -> dict:
-    """Charge les paramètres de l'utilisateur depuis loyalty_settings.json."""
     if not os.path.exists(_SETTINGS_FILE):
         return _DEFAULT_SETTINGS.copy()
     try:
         with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
             all_settings = json.load(f)
-        user_settings = all_settings.get(user_email, {})
         merged = _DEFAULT_SETTINGS.copy()
-        merged.update(user_settings)
+        merged.update(all_settings.get(user_email, {}))
         return merged
     except (json.JSONDecodeError, IOError):
         return _DEFAULT_SETTINGS.copy()
 
 
 def _save_settings(user_email: str, settings: dict) -> None:
-    """Sauvegarde les paramètres de l'utilisateur dans loyalty_settings.json."""
     all_settings = {}
     if os.path.exists(_SETTINGS_FILE):
         try:
@@ -73,45 +73,47 @@ def _save_settings(user_email: str, settings: dict) -> None:
         json.dump(all_settings, f, ensure_ascii=False, indent=2)
 
 
+# ── ENVOI WEBHOOK ─────────────────────────────────────────────────────────────
+def _send_webhook(url: str, payload: dict) -> tuple:
+    """POST payload as JSON to url. Returns (success: bool, message: str)."""
+    if not url or not url.startswith("http"):
+        return False, "URL invalide ou non configurée"
+    try:
+        import requests
+        resp = requests.post(url, json=payload, timeout=10)
+        resp.raise_for_status()
+        return True, f"HTTP {resp.status_code}"
+    except ImportError:
+        return False, "Module 'requests' non disponible (pip install requests)"
+    except Exception as exc:
+        return False, str(exc)
+
+
 # ── SEGMENTATION DES CLIENTS ─────────────────────────────────────────────────
 def segment_clients(df, secteur):
-    """
-    Segmente les clients en 3 cohortes selon le score de risque et l'ancienneté.
-    Retourne 3 DataFrames : cohorte_a, cohorte_b, champions
-    """
     cfg = SEGMENTATION_CONFIG
+    catalog       = REWARDS_CATALOG.get(secteur, {})
+    tenure_min_b  = catalog.get("tenure_fidelite", 12)
+    tenure_q3     = df['tenure'].quantile(0.75) if 'tenure' in df.columns else tenure_min_b
 
-    # Récupérer le seuil d'ancienneté pour la fidélité selon le secteur
-    catalog        = REWARDS_CATALOG.get(secteur, {})
-    tenure_min_b   = catalog.get("tenure_fidelite", 12)
-    tenure_q3      = df['tenure'].quantile(0.75) if 'tenure' in df.columns else tenure_min_b
-
-    # 🚨 Cohorte A — Sauvetage Stratégique
-    cohorte_a = df[
-        (df['ChurnProba'] > cfg["sauvetage_proba_min"])
-    ].copy()
+    cohorte_a = df[df['ChurnProba'] > cfg["sauvetage_proba_min"]].copy()
     cohorte_a['Priorité'] = cohorte_a['ChurnProba'].apply(
-        lambda x: "🔴 Critique"  if x > 0.80 else
-                  "🟠 Urgent"    if x > 0.65 else
-                  "🟡 À suivre"
+        lambda x: "🔴 Critique" if x > 0.80 else "🟠 Urgent" if x > 0.65 else "🟡 À suivre"
     )
 
-    # 🏆 Cohorte B — Fidélité Historique
     cohorte_b = df[
         (df['ChurnProba'] < cfg["fidelite_proba_max"]) &
-        (df['tenure']     >= tenure_q3)
+        (df['tenure'] >= tenure_q3)
     ].copy() if 'tenure' in df.columns else pd.DataFrame()
+
     if not cohorte_b.empty:
         cohorte_b['Médaille'] = cohorte_b['tenure'].apply(
-            lambda x: "🥇 Légende"   if x >= 60 else
-                      "🥈 Vétéran"   if x >= 36 else
-                      "🥉 Fidèle"
+            lambda x: "🥇 Légende" if x >= 60 else "🥈 Vétéran" if x >= 36 else "🥉 Fidèle"
         )
 
-    # 🌟 Champions — Messages automatiques
     champions = df[
         (df['ChurnProba'] < cfg["champion_proba_max"]) &
-        (df['tenure']     >= cfg["champion_tenure_min"])
+        (df['tenure'] >= cfg["champion_tenure_min"])
     ].copy() if 'tenure' in df.columns else pd.DataFrame()
 
     return cohorte_a, cohorte_b, champions
@@ -119,21 +121,18 @@ def segment_clients(df, secteur):
 
 # ── PAGE PRINCIPALE ───────────────────────────────────────────────────────────
 def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
-    """
-    Affiche la page Programme de Fidélité & Rétention — version actionnable.
-    """
     from data_pipeline import triage_risque
 
     st.markdown("""
     <div class="main-header">
         <h1 style='margin:0;color:white;'>🏆 Programme de Fidélité & Rétention</h1>
         <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>
-            Ciblage précis par Motif de Risque — De l'analyse à l'action en un clic
+            Catalogue de récompenses dynamique — De l'analyse à l'action en un clic
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── VALIDATION DES DONNÉES ───────────────────────────────────────────────
+    # ── VALIDATION ───────────────────────────────────────────────────────────
     if df is None or len(df) == 0:
         st.warning("⚠️ Aucune donnée disponible. Importez vos données via 'Importer mes données'.")
         return
@@ -143,32 +142,28 @@ def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
         return
 
     # ── ENRICHISSEMENT TRIAGE ────────────────────────────────────────────────
-    # On considère comme "à risque" tous les clients avec ChurnProba > 0.40
     clients_risque_raw = df[df['ChurnProba'] > 0.40].copy()
 
     if clients_risque_raw.empty:
         st.success("✅ Aucun client à risque détecté (seuil : 40%). Excellent taux de rétention !")
         return
 
-    # Appliquer le moteur de triage pour obtenir 'Motif de Risque'
     clients_enrichis = triage_risque(clients_risque_raw, df)
 
-    # Ajouter la colonne Priorité
     def _label_priorite(proba):
         if proba > 0.80:
             return "🔴 Critique (>80%)"
         elif proba > 0.60:
             return "🟠 Urgent (60-80%)"
-        else:
-            return "🟡 À suivre (40-60%)"
+        return "🟡 À suivre (40-60%)"
 
     clients_enrichis['Priorité'] = clients_enrichis['ChurnProba'].apply(_label_priorite)
 
     # ── KPIs RAPIDES ─────────────────────────────────────────────────────────
     st.markdown("---")
-    nb_critique = (clients_enrichis['ChurnProba'] > 0.80).sum()
-    nb_urgent   = ((clients_enrichis['ChurnProba'] > 0.60) & (clients_enrichis['ChurnProba'] <= 0.80)).sum()
-    nb_suivre   = ((clients_enrichis['ChurnProba'] > 0.40) & (clients_enrichis['ChurnProba'] <= 0.60)).sum()
+    nb_critique   = (clients_enrichis['ChurnProba'] > 0.80).sum()
+    nb_urgent     = ((clients_enrichis['ChurnProba'] > 0.60) & (clients_enrichis['ChurnProba'] <= 0.80)).sum()
+    nb_suivre     = ((clients_enrichis['ChurnProba'] > 0.40) & (clients_enrichis['ChurnProba'] <= 0.60)).sum()
     revenu_risque = clients_enrichis['MonthlyCharges'].sum() if 'MonthlyCharges' in clients_enrichis.columns else 0
 
     k1, k2, k3, k4 = st.columns(4)
@@ -194,37 +189,25 @@ def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
     st.markdown("### 🎯 Ciblage de la campagne")
 
     col_f1, col_f2 = st.columns(2)
-
     with col_f1:
         options_priorite = ["Tous", "🔴 Critique (>80%)", "🟠 Urgent (60-80%)", "🟡 À suivre (40-60%)"]
-        filtre_priorite = st.selectbox(
-            "Filtrer par priorité",
-            options_priorite,
-            key="loyalty_filtre_priorite",
-        )
-
+        filtre_priorite = st.selectbox("Filtrer par priorité", options_priorite, key="loyalty_filtre_priorite")
     with col_f2:
-        motifs_dispo = sorted(clients_enrichis['Motif de Risque'].unique().tolist())
+        motifs_dispo   = sorted(clients_enrichis['Motif de Risque'].unique().tolist())
         options_motifs = ["Tous les motifs"] + motifs_dispo
-        filtre_motif = st.selectbox(
-            "Filtrer par Motif de Risque",
-            options_motifs,
-            key="loyalty_filtre_motif",
-        )
+        filtre_motif   = st.selectbox("Filtrer par Motif de Risque", options_motifs, key="loyalty_filtre_motif")
 
     # ── APPLICATION DES FILTRES ──────────────────────────────────────────────
     df_filtre = clients_enrichis.copy()
-
     if filtre_priorite != "Tous":
         df_filtre = df_filtre[df_filtre['Priorité'] == filtre_priorite]
-
     if filtre_motif != "Tous les motifs":
         df_filtre = df_filtre[df_filtre['Motif de Risque'] == filtre_motif]
 
     # ── TABLEAU DYNAMIQUE ─────────────────────────────────────────────────────
     st.markdown("---")
-
     nb_filtres = len(df_filtre)
+
     if nb_filtres == 0:
         st.info("Aucun client ne correspond aux filtres sélectionnés.")
     else:
@@ -235,7 +218,6 @@ def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
             unsafe_allow_html=True,
         )
 
-        # Construire les colonnes à afficher
         display_cols = {}
         if 'customerID' in df_filtre.columns:
             display_cols['customerID'] = 'ID Client'
@@ -247,15 +229,13 @@ def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
         display_cols['Priorité']        = 'Priorité'
         display_cols['Motif de Risque'] = 'Motif de Risque'
 
-        cols_present = [c for c in display_cols.keys() if c in df_filtre.columns]
-        df_display = df_filtre[cols_present].sort_values('ChurnProba', ascending=False).head(100).copy()
+        cols_present = [c for c in display_cols if c in df_filtre.columns]
+        df_display   = df_filtre[cols_present].sort_values('ChurnProba', ascending=False).head(100).copy()
         df_display.index = range(1, len(df_display) + 1)
         df_display['ChurnProba'] = df_display['ChurnProba'].apply(lambda x: f"{x * 100:.1f}%")
         df_display = df_display.rename(columns=display_cols)
-
         st.dataframe(df_display, use_container_width=True)
 
-        # Export CSV
         csv_export = df_filtre.to_csv(index=False).encode('utf-8')
         st.download_button(
             "📥 Exporter la sélection (CSV)",
@@ -265,49 +245,172 @@ def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
             use_container_width=False,
         )
 
+    # ── CATALOGUE DE RÉCOMPENSES (DYNAMIQUE) ─────────────────────────────────
+    st.markdown("---")
+
+    with st.expander("🎁 Gérer le Catalogue de Récompenses", expanded=False):
+        st.markdown("""
+        <div style='background:linear-gradient(135deg,#0D1B2E,#1a1d2e);
+                    border:1px solid #667eea;border-radius:12px;
+                    padding:1rem 1.4rem;margin-bottom:1.2rem;'>
+            <h4 style='color:white;margin:0 0 4px 0;'>🎁 Créer une nouvelle récompense</h4>
+            <p style='color:#64748B;margin:0;font-size:0.85rem;'>
+                Définissez un Label personnalisé et ses 4 primitives (Action, Cible, Valeur, Durée).
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("form_add_reward", border=False):
+            new_label  = st.text_input("🏷️ Label personnalisé",  placeholder="ex : Cadeau Ancienneté")
+            c1, c2 = st.columns(2)
+            with c1:
+                new_action = st.text_input("⚡ Action",  placeholder="ex : Offrir, Appliquer, Envoyer…")
+                new_valeur = st.text_input("💎 Valeur",  placeholder="ex : 1 mois gratuit, -20%, 50 pts…")
+            with c2:
+                new_cible  = st.text_input("🎯 Cible",   placeholder="ex : Clients 12+ mois à risque…")
+                new_duree  = st.text_input("⏱️ Durée",   placeholder="ex : 30 jours, 3 mois…")
+
+            submitted = st.form_submit_button("➕ Ajouter au catalogue", type="primary", use_container_width=True)
+
+        if submitted:
+            if not new_label.strip():
+                st.error("Le Label personnalisé est obligatoire.")
+            else:
+                create_reward_primitive(
+                    user_email=user_email,
+                    label=new_label.strip(),
+                    action=new_action.strip(),
+                    cible=new_cible.strip(),
+                    valeur=new_valeur.strip(),
+                    duree=new_duree.strip(),
+                )
+                st.success(f"✅ Récompense **'{new_label.strip()}'** ajoutée au catalogue !")
+                st.rerun()
+
+        # Afficher les récompenses existantes
+        existing = get_reward_primitives(user_email)
+        if existing:
+            st.markdown("---")
+            st.markdown("**Récompenses configurées :**")
+            for prim in existing:
+                col_info, col_del = st.columns([5, 1])
+                with col_info:
+                    st.markdown(
+                        f"<div style='background:#1a1d2e;border:1px solid #2d3748;"
+                        f"border-radius:8px;padding:0.6rem 1rem;margin-bottom:4px;'>"
+                        f"<b style='color:#CBD5E1;'>{prim['label']}</b>&nbsp;"
+                        f"<span style='color:#64748B;font-size:0.82rem;'>"
+                        f"· {prim['action']} · {prim['cible']} · {prim['valeur']} · {prim['duree']}"
+                        f"</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                with col_del:
+                    if st.button("🗑️", key=f"del_prim_{prim['id']}", help="Supprimer"):
+                        delete_reward_primitive(prim['id'])
+                        st.rerun()
+        else:
+            st.info("Aucune récompense dans le catalogue. Créez-en une ci-dessus.")
+
     # ── ACTION DE FIDÉLISATION ────────────────────────────────────────────────
     st.markdown("---")
     st.markdown("""
     <div style='background:linear-gradient(135deg,#0D1B2E,#1a1d2e);
                 border:1px solid #667eea;border-radius:14px;
                 padding:1.2rem 1.5rem;margin-bottom:1.2rem;'>
-        <h3 style='color:white;margin:0 0 4px 0;'>🎁 Action de Fidélisation</h3>
+        <h3 style='color:white;margin:0 0 4px 0;'>🚀 Déclencher une Campagne</h3>
         <p style='color:#64748B;margin:0;font-size:0.88rem;'>
-            Choisissez une récompense et déclenchez la campagne pour les clients ciblés ci-dessus.
+            Sélectionnez une récompense du catalogue et déclenchez la campagne pour les clients ciblés.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    RECOMPENSES_AGNOSTIQUES = [
-        "1 mois offert",
-        "Surclassement gratuit (Upgrade)",
-        "Accès Premium offert pendant 3 mois",
-        "Bon de réduction -20%",
-    ]
+    primitives = get_reward_primitives(user_email)
 
-    col_r1, col_r2 = st.columns([3, 1])
-    with col_r1:
-        selected_reward = st.selectbox(
-            "Choisir la récompense à offrir :",
-            RECOMPENSES_AGNOSTIQUES,
-            key="loyalty_reward_select",
+    if not primitives:
+        st.info("ℹ️ Aucune récompense dans le catalogue. Ouvrez le panneau **'Gérer le Catalogue'** ci-dessus pour en créer une.")
+        trigger_disabled = True
+        selected_prim    = None
+    else:
+        prim_labels  = [p['label'] for p in primitives]
+        selected_lbl = st.selectbox("Choisir la récompense à offrir :", prim_labels, key="loyalty_reward_select")
+        selected_prim = next(p for p in primitives if p['label'] == selected_lbl)
+
+        # Afficher les détails de la récompense sélectionnée
+        st.markdown(
+            f"<div style='background:#0A1C0F;border:1px solid #00CC96;border-radius:8px;"
+            f"padding:0.7rem 1rem;margin-top:0.5rem;font-size:0.88rem;'>"
+            f"<b style='color:#00CC96;'>⚡ Action :</b> <span style='color:#CBD5E1;'>{selected_prim['action']}</span> &nbsp;|&nbsp; "
+            f"<b style='color:#00CC96;'>🎯 Cible :</b> <span style='color:#CBD5E1;'>{selected_prim['cible']}</span> &nbsp;|&nbsp; "
+            f"<b style='color:#00CC96;'>💎 Valeur :</b> <span style='color:#CBD5E1;'>{selected_prim['valeur']}</span> &nbsp;|&nbsp; "
+            f"<b style='color:#00CC96;'>⏱️ Durée :</b> <span style='color:#CBD5E1;'>{selected_prim['duree']}</span>"
+            f"</div>",
+            unsafe_allow_html=True,
         )
-    with col_r2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        trigger = st.button(
-            "🚀 Déclencher la campagne",
-            key="loyalty_trigger_btn",
-            type="primary",
-            use_container_width=True,
-        )
+        trigger_disabled = False
+
+    settings = _load_settings(user_email)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    trigger = st.button(
+        "🚀 Déclencher la campagne",
+        key="loyalty_trigger_btn",
+        type="primary",
+        use_container_width=True,
+        disabled=trigger_disabled,
+    )
 
     if trigger:
         if nb_filtres == 0:
             st.warning("⚠️ Aucun client sélectionné. Ajustez vos filtres avant de déclencher la campagne.")
+        elif selected_prim is None:
+            st.warning("⚠️ Aucune récompense sélectionnée.")
         else:
+            # Construire le payload webhook
+            clients_sample = []
+            for _, row in df_filtre.head(50).iterrows():
+                entry = {"churn_proba": round(float(row['ChurnProba']), 4)}
+                if 'Priorité' in row.index:
+                    entry['priorite'] = row['Priorité']
+                if 'Motif de Risque' in row.index:
+                    entry['motif'] = row['Motif de Risque']
+                clients_sample.append(entry)
+
+            webhook_payload = {
+                "event":     "loyalty_campaign_triggered",
+                "timestamp": datetime.now().isoformat(sep="T", timespec="seconds"),
+                "company":   user_company,
+                "secteur":   secteur,
+                "reward": {
+                    "id":     selected_prim['id'],
+                    "label":  selected_prim['label'],
+                    "action": selected_prim['action'],
+                    "cible":  selected_prim['cible'],
+                    "valeur": selected_prim['valeur'],
+                    "duree":  selected_prim['duree'],
+                },
+                "targeting": {
+                    "priority_filter": filtre_priorite,
+                    "motif_filter":    filtre_motif,
+                    "total_clients":   nb_filtres,
+                },
+                "clients_sample": clients_sample,
+            }
+
+            # Envoi webhook si configuré
+            webhook_url = settings.get("webhook_url", "").strip()
+            if webhook_url:
+                ok, msg = _send_webhook(webhook_url, webhook_payload)
+                if ok:
+                    st.success(f"📡 Webhook envoyé ({msg})")
+                else:
+                    st.error(f"❌ Webhook échoué : {msg}")
+
             st.success(
-                f"✅ Campagne **'{selected_reward}'** déclenchée avec succès pour "
-                f"**{nb_filtres} client(s)** ! Les emails ont été mis en file d'attente."
+                f"✅ Campagne **'{selected_prim['label']}'** déclenchée pour "
+                f"**{nb_filtres} client(s)** !\n\n"
+                f"Action : **{selected_prim['action']}** · "
+                f"Valeur : **{selected_prim['valeur']}** · "
+                f"Durée : **{selected_prim['duree']}**"
             )
             st.balloons()
 
@@ -324,7 +427,7 @@ def _render_config_panel(user_email: str, user_company: str, secteur: str):
     <div style='background:linear-gradient(135deg,#0D1B2E,#1a1d2e);
                 border:1px solid #667eea;border-radius:14px;
                 padding:1.2rem 1.5rem;margin-bottom:1.5rem;'>
-        <h3 style='color:white;margin:0 0 4px 0;'>⚙️ Panneau d'administration — Règles de Récompenses</h3>
+        <h3 style='color:white;margin:0 0 4px 0;'>⚙️ Panneau d'administration — Règles & Webhook</h3>
         <p style='color:#64748B;margin:0;font-size:0.88rem;'>
             Paramétrez vos campagnes de rétention. Les règles sont sauvegardées par entreprise.
         </p>
@@ -357,12 +460,12 @@ def _render_config_panel(user_email: str, user_company: str, secteur: str):
         st.markdown("### 💎 Bloc 2 — Personnalisation de la Valeur")
         col_v1, col_v2 = st.columns(2)
         with col_v1:
+            reward_type_opts = ["Pourcentage %", "Montant fixe €", "En nature"]
             reward_type = st.selectbox(
                 "🎁 Type de récompense",
-                ["Pourcentage %", "Montant fixe €", "En nature"],
-                index=["Pourcentage %", "Montant fixe €", "En nature"].index(
-                    cfg_data.get("reward_type", "Pourcentage %")
-                ) if cfg_data.get("reward_type", "Pourcentage %") in ["Pourcentage %", "Montant fixe €", "En nature"] else 0,
+                reward_type_opts,
+                index=reward_type_opts.index(cfg_data.get("reward_type", "Pourcentage %"))
+                      if cfg_data.get("reward_type") in reward_type_opts else 0,
             )
         with col_v2:
             reward_value = st.number_input(
@@ -390,11 +493,21 @@ def _render_config_panel(user_email: str, user_company: str, secteur: str):
             )
 
         st.markdown("---")
-        col_save, col_reset, _ = st.columns([1, 1, 2])
-        submitted = col_save.form_submit_button(
-            "💾 Sauvegarder", use_container_width=True, type="primary",
+        st.markdown("### 📡 Bloc 4 — Webhook")
+        st.caption(
+            "URL appelée à chaque déclenchement de campagne. "
+            "Le payload JSON inclut la récompense, la cible et un échantillon de clients."
         )
-        reset = col_reset.form_submit_button("↩️ Réinitialiser", use_container_width=True)
+        webhook_url = st.text_input(
+            "URL du Webhook",
+            value=cfg_data.get("webhook_url", ""),
+            placeholder="https://hooks.example.com/retainiq",
+        )
+
+        st.markdown("---")
+        col_save, col_reset, _ = st.columns([1, 1, 2])
+        submitted = col_save.form_submit_button("💾 Sauvegarder", use_container_width=True, type="primary")
+        reset     = col_reset.form_submit_button("↩️ Réinitialiser", use_container_width=True)
 
     if submitted:
         new_settings = {
@@ -410,6 +523,7 @@ def _render_config_panel(user_email: str, user_company: str, secteur: str):
             "periode_carence":    int(periode_carence),
             "campagne_sauvetage": cfg_data.get("campagne_sauvetage", True),
             "campagne_fidelite":  cfg_data.get("campagne_fidelite", True),
+            "webhook_url":        webhook_url.strip(),
         }
         _save_settings(user_email, new_settings)
         st.success("✅ Configuration sauvegardée avec succès !")
@@ -418,5 +532,3 @@ def _render_config_panel(user_email: str, user_company: str, secteur: str):
         _save_settings(user_email, _DEFAULT_SETTINGS.copy())
         st.info("↩️ Configuration réinitialisée aux valeurs par défaut.")
         st.rerun()
-
-

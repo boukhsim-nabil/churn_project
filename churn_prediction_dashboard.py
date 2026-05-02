@@ -4,6 +4,10 @@ import os
 import tempfile
 import warnings
 
+import google.generativeai as genai
+from dotenv import load_dotenv
+load_dotenv()
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -397,29 +401,36 @@ def build_input_df(tenure, charges, contract, internet, security):
 # triage_risque est importé depuis data_pipeline
 
 
-def chatbot_response(question):
-    q = question.lower()
-    n_urgent = len(df[df['ChurnProba'] > 0.6])
-    if any(w in q for w in ["bonjour", "salut", "hello", "bonsoir"]):
-        return f"Bonjour ! Je suis l'Assistant IA de RetainIQ 🔮\nActuellement **{n_urgent} clients** sont en risque élevé. Que puis-je faire pour vous ?"
-    elif any(w in q for w in ["churn", "partir", "quitter", "risque", "départ"]):
-        return f"Le churn est le départ d'un client. Notre modèle XGBoost le prédit de 0% à 100%.\nTaux actuel : **{df['Churn'].mean()*100:.1f}%** — **{n_urgent} clients urgents** en ce moment."
-    elif any(w in q for w in ["pourquoi", "cause", "raison", "facteur"]):
-        return "Les **3 principaux facteurs de churn** :\n1. **Contrat mensuel** (vs annuel)\n2. **Charges élevées** (>70€/mois)\n3. **Faible ancienneté** (<12 mois)"
-    elif any(w in q for w in ["xgboost", "modèle", "algorithme", "précision", "accuracy"]):
-        return f"Le modèle utilise **XGBoost**, entraîné sur **{len(df)} clients**.\nPrécision : **{model_accuracy:.1%}** — l'un des meilleurs algorithmes pour données tabulaires."
-    elif any(w in q for w in ["action", "faire", "recommandation", "retenir", "garder"]):
-        return "Actions les plus efficaces :\n1. 📞 Appel de rétention dans les 48h\n2. 🎁 Remise personnalisée 15-20%\n3. 📋 Migration vers un contrat annuel\n\nUtilise le **Simulateur What-If** pour tester l'impact avant d'agir !"
-    elif any(w in q for w in ["simulateur", "what-if", "simulation", "tester"]):
-        return "Le **Simulateur What-If** te permet de modifier les paramètres d'un client et voir en temps réel l'évolution de son risque.\nExemple : Mensuel → Annuel peut réduire le risque de **85% à 23%** !"
-    elif any(w in q for w in ["alerte", "urgent", "priorité"]):
-        return f"Il y a **{n_urgent} clients** avec un risque >60% en ce moment.\nConsulte l'onglet **Alertes Clients** pour la liste complète et les actions recommandées."
-    elif any(w in q for w in ["secteur", "sport", "salle", "ecommerce", "telecom", "saas"]):
-        return f"RetainIQ s'adapte à plusieurs secteurs ! Secteur actuel : **{secteur}**\n\nCompatible avec : 📱 Télécom · 💪 Sport · 🛍️ E-commerce · 🎓 EdTech · ☁️ SaaS B2B"
-    elif any(w in q for w in ["combien", "nombre", "total"]):
-        return f"Base actuelle :\n- **Total clients** : {len(df):,}\n- **Churned** : {df['Churn'].sum():,}\n- **Risque élevé** : {n_urgent}\n- **Taux de churn** : {df['Churn'].mean()*100:.1f}%"
-    else:
-        return "Je peux vous aider sur :\n- **Causes du churn** → 'pourquoi les clients partent ?'\n- **Le modèle IA** → 'comment fonctionne XGBoost ?'\n- **Actions** → 'que faire pour retenir un client ?'\n- **Alertes** → 'combien de clients sont urgents ?'"
+def gemini_chat_response(question: str, df_clean: pd.DataFrame) -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return "⚠️ Clé GEMINI_API_KEY manquante dans le fichier `.env`."
+
+    n_total   = len(df_clean)
+    n_urgent  = int((df_clean["ChurnProba"] > 0.6).sum()) if "ChurnProba" in df_clean.columns else 0
+    secteur   = st.session_state.get("user_secteur", "Non défini")
+
+    system_prompt = (
+        "Tu es un expert en Data Science et fidélisation client B2B, intégré au logiciel RetainIQ. "
+        "Ton rôle est d'aider les équipes métier à comprendre et réduire le churn client. "
+        "Réponds toujours en français, de façon concise, professionnelle et actionnable. "
+        "Utilise du Markdown (gras, listes) pour structurer tes réponses. "
+        "Ne réponds jamais à des sujets sans rapport avec la fidélisation ou le churn.\n\n"
+        f"Contexte actuel du tableau de bord:\n"
+        f"- Secteur d'activité: {secteur}\n"
+        f"- Nombre total de clients analysés: {n_total:,}\n"
+        f"- Clients en risque élevé (ChurnProba > 60%): {n_urgent}\n"
+    )
+
+    genai.configure(api_key=api_key)
+
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        full_prompt = system_prompt + "\n\nQuestion de l'utilisateur : " + question
+        response = model.generate_content(full_prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Erreur Gemini : {e}"
 
 # ══════════════════════════════════════════════════════════════════
 # PAGE 0 — BIENVENUE / BLANK SLATE (nouvel utilisateur sans modèle)
@@ -537,14 +548,18 @@ elif section == "🏠 Overview":
     sample_features= sample_df.drop(['Churn', 'ChurnProba', 'RiskLevel'], axis=1, errors='ignore')
     risk_scores    = model.predict_proba(sample_features)[:, 1]
 
+    _ov_tenure_col  = next((c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client'] if c in sample_df.columns), None)
+    _ov_charges_col = next((c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen'] if c in sample_df.columns), None)
     display_dict = {
         'Client N°':        range(1, 11),
-        cfg['tenure']:      sample_df['tenure'].values,
-        cfg['charges']:     sample_df['MonthlyCharges'].round(2).values if 'MonthlyCharges' in sample_df.columns else [None]*10,
         cfg['churn_label']: ['Oui' if x == 1 else 'Non' for x in sample_df['Churn'].values],
         'Score de risque':  [f"{x:.1%}" for x in risk_scores],
         'Niveau':           ['🔴 Élevé' if x > 0.6 else '🟡 Modéré' if x > 0.3 else '🟢 Faible' for x in risk_scores]
     }
+    if _ov_tenure_col:
+        display_dict[cfg['tenure']] = sample_df[_ov_tenure_col].values
+    if _ov_charges_col:
+        display_dict[cfg['charges']] = sample_df[_ov_charges_col].round(2).values
     if 'TotalCharges' in sample_df.columns:
         display_dict['Total cumulé (€)'] = sample_df['TotalCharges'].round(2).values
     if 'SeniorCitizen' in sample_df.columns:
@@ -596,24 +611,32 @@ elif section == "📊 Visual Analytics":
         fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(size=14))
         st.plotly_chart(fig, use_container_width=True)
     with col2:
-        fig = px.histogram(
-            df, x='MonthlyCharges', color='Churn',
-            title="💰 Monthly Charges vs Churn Risk",
-            nbins=30, color_discrete_sequence=['#00CC96', '#EF553B']
-        )
-        fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', showlegend=True)
-        st.plotly_chart(fig, use_container_width=True)
+        _va_charges_col = next((c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen'] if c in df.columns), None)
+        if _va_charges_col:
+            fig = px.histogram(
+                df, x=_va_charges_col, color='Churn',
+                title="💰 Monthly Charges vs Churn Risk",
+                nbins=30, color_discrete_sequence=['#00CC96', '#EF553B']
+            )
+            fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', showlegend=True)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("ℹ️ Histogramme des charges indisponible : aucune colonne de charges détectée dans ce dataset.")
 
-    fig = px.box(
-        df, x='Churn', y='tenure', title="⏰ Customer Tenure Analysis",
-        color='Churn', color_discrete_sequence=['#00CC96', '#EF553B'],
-        labels={'Churn': 'Customer Status', 'tenure': 'Months with Company'}
-    )
-    fig.update_layout(
-        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(tickmode='array', tickvals=[0, 1], ticktext=['Active', 'Churned'])
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    _va_tenure_col = next((c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client'] if c in df.columns), None)
+    if _va_tenure_col:
+        fig = px.box(
+            df, x='Churn', y=_va_tenure_col, title="⏰ Customer Tenure Analysis",
+            color='Churn', color_discrete_sequence=['#00CC96', '#EF553B'],
+            labels={'Churn': 'Customer Status', _va_tenure_col: 'Months with Company'}
+        )
+        fig.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(tickmode='array', tickvals=[0, 1], ticktext=['Active', 'Churned'])
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("ℹ️ Analyse d'ancienneté (box plot) indisponible : aucune colonne d'ancienneté détectée dans ce dataset.")
 
     feature_importance = model.feature_importances_
     importance_df = pd.DataFrame({'Feature': feature_names, 'Importance': feature_importance})\
@@ -632,12 +655,15 @@ elif section == "📊 Visual Analytics":
     ax.set_xlabel('Churn Status'); ax.set_ylabel('Count')
     st.pyplot(fig)
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.histplot(data=df, x='tenure', hue='Churn', multiple='stack', bins=30,
-                 palette=['#4CAF50', '#F44336'], ax=ax)
-    ax.set_title('Customer Tenure vs Churn', pad=20)
-    ax.set_xlabel('Tenure (months)'); ax.set_ylabel('Count')
-    st.pyplot(fig)
+    if _va_tenure_col:
+        fig, ax = plt.subplots(figsize=(10, 4))
+        sns.histplot(data=df, x=_va_tenure_col, hue='Churn', multiple='stack', bins=30,
+                     palette=['#4CAF50', '#F44336'], ax=ax)
+        ax.set_title('Customer Tenure vs Churn', pad=20)
+        ax.set_xlabel('Tenure (months)'); ax.set_ylabel('Count')
+        st.pyplot(fig)
+    else:
+        st.info("ℹ️ Histogramme d'ancienneté indisponible : aucune colonne d'ancienneté détectée dans ce dataset.")
 
     numeric_cols = [c for c in df.select_dtypes(include=['int64', 'float64']).columns if c != 'ChurnProba']
     fig, ax = plt.subplots(figsize=(12, 8))
@@ -839,7 +865,7 @@ elif section == "🌟 Future Scenarios":
         st.plotly_chart(fig, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════
-# PAGE 5 — SIMULATEUR WHAT-IF (NOUVEAU)
+# PAGE 5 — SIMULATEUR WHAT-IF (agnostique au secteur)
 # ══════════════════════════════════════════════════════════════════
 elif section == "⚡ Simulateur What-If":
     st.markdown("""
@@ -851,24 +877,84 @@ elif section == "⚡ Simulateur What-If":
 
     st.info("💡 Modifiez les paramètres d'un client et voyez instantanément comment son risque de churn évolue.")
 
+    # ── Colonnes disponibles pour la simulation ─────────────────────────────
+    _exclude_sim = {'Churn', 'ChurnProba', 'RiskLevel', 'Motif de Risque', 'Action Suggérée', 'Priorité'}
+    sim_features = [c for c in feature_names if c in df.columns and c not in _exclude_sim]
+
+    def _whatsif_spec(col):
+        """Classify a feature column → ('binary'|'discrete'|'continuous'|'constant', params)."""
+        s    = df[col].dropna()
+        vals = sorted(s.unique().tolist())
+        n    = len(vals)
+        if n <= 1:
+            return ("constant", float(vals[0]) if vals else 0.0)
+        # Binary 0/1
+        if n == 2 and abs(float(vals[0])) < 1e-9 and abs(float(vals[1]) - 1.0) < 1e-9:
+            return ("binary", None)
+        # Small integer set (ordinal / one-hot like)
+        if n <= 10 and all(float(v) == int(float(v)) for v in vals):
+            return ("discrete", [int(v) for v in vals])
+        # Continuous
+        return ("continuous", (float(s.min()), float(s.max()), float(s.median())))
+
+    # Pré-calculer les specs une seule fois
+    _specs = {c: _whatsif_spec(c) for c in sim_features}
+
+    inputs_a: dict = {}
+    inputs_b: dict = {}
+
     col1, col2 = st.columns(2)
+
     with col1:
         st.subheader("📌 Situation ACTUELLE")
-        tenure_a   = st.slider(f"{cfg['tenure']} — Actuel",  1, 72, 6,    key="wa_ten")
-        charges_a  = st.slider(f"{cfg['charges']} — Actuel", 20.0, 120.0, 85.0, key="wa_ch")
-        contract_a = st.selectbox("Contrat actuel",  ["Mensuel", "1 an", "2 ans"], key="wa_co")
-        internet_a = st.selectbox("Internet actuel", ["DSL", "Fibre optique", "Aucun"], key="wa_in")
-        security_a = st.checkbox("Sécurité incluse ?", key="wa_se")
+        for feat in sim_features:
+            kind, params = _specs[feat]
+            if kind == "constant":
+                inputs_a[feat] = params
+            elif kind == "binary":
+                opts = ["Non (0)", "Oui (1)"]
+                sel  = st.selectbox(feat, opts, index=0, key=f"wa_{feat}")
+                inputs_a[feat] = 0 if sel.startswith("Non") else 1
+            elif kind == "discrete":
+                sel  = st.selectbox(feat, params, index=0, key=f"wa_{feat}")
+                inputs_a[feat] = int(sel)
+            else:
+                fmin, fmax, fmed = params
+                if fmin >= fmax:
+                    inputs_a[feat] = fmed
+                    st.number_input(feat, value=fmed, disabled=True, key=f"wa_{feat}")
+                else:
+                    inputs_a[feat] = st.slider(feat, fmin, fmax, fmed, key=f"wa_{feat}")
+
     with col2:
         st.subheader("🎯 Situation APRÈS votre action")
-        tenure_b   = st.slider(f"{cfg['tenure']} — Après",          1, 72, tenure_a,              key="wb_ten")
-        charges_b  = st.slider(f"{cfg['charges']} — Après remise", 20.0, 120.0, max(20.0, charges_a - 15), key="wb_ch")
-        contract_b = st.selectbox("Nouveau contrat",  ["Mensuel", "1 an", "2 ans"], index=1, key="wb_co")
-        internet_b = st.selectbox("Nouveau service",  ["DSL", "Fibre optique", "Aucun"],       key="wb_in")
-        security_b = st.checkbox("Sécurité incluse ?", value=True, key="wb_se")
+        for feat in sim_features:
+            kind, params = _specs[feat]
+            if kind == "constant":
+                inputs_b[feat] = params
+            elif kind == "binary":
+                opts     = ["Non (0)", "Oui (1)"]
+                def_idx  = 0
+                sel      = st.selectbox(feat, opts, index=def_idx, key=f"wb_{feat}")
+                inputs_b[feat] = 0 if sel.startswith("Non") else 1
+            elif kind == "discrete":
+                def_idx  = 0
+                sel      = st.selectbox(feat, params, index=def_idx, key=f"wb_{feat}")
+                inputs_b[feat] = int(sel)
+            else:
+                fmin, fmax, fmed = params
+                if fmin >= fmax:
+                    inputs_b[feat] = fmed
+                    st.number_input(feat, value=fmed, disabled=True, key=f"wb_{feat}")
+                else:
+                    inputs_b[feat] = st.slider(feat, fmin, fmax, fmed, key=f"wb_{feat}")
 
-    score_a = model.predict_proba(build_input_df(tenure_a, charges_a, contract_a, internet_a, security_a))[0][1]
-    score_b = model.predict_proba(build_input_df(tenure_b, charges_b, contract_b, internet_b, security_b))[0][1]
+    # ── Construction des DataFrames de prédiction ───────────────────────────
+    _row_a = {f: inputs_a.get(f, float(df[f].median()) if f in df.columns else 0) for f in feature_names}
+    _row_b = {f: inputs_b.get(f, float(df[f].median()) if f in df.columns else 0) for f in feature_names}
+
+    score_a = model.predict_proba(pd.DataFrame([_row_a]))[0][1]
+    score_b = model.predict_proba(pd.DataFrame([_row_b]))[0][1]
     delta   = score_b - score_a
 
     st.markdown("---")
@@ -890,20 +976,33 @@ elif section == "⚡ Simulateur What-If":
     with c2:
         dc = "#00CC96" if delta < 0 else "#EF4444"
         di = "📉 Amélioration" if delta < 0 else "📈 Dégradation"
+        # Économie mensuelle si une colonne de charges est disponible
+        _charges_cols = ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen']
+        _chg_col      = next((c for c in _charges_cols if c in inputs_a), None)
+        _savings_html = ""
+        if _chg_col:
+            _savings = float(inputs_a.get(_chg_col, 0)) - float(inputs_b.get(_chg_col, 0))
+            if _savings != 0:
+                _savings_html = (
+                    f"<div style='color:#888;font-size:0.8rem;margin-top:12px;'>"
+                    f"Économie client : <b style='color:#00CC96;'>{_savings:.0f}€/mois</b></div>"
+                )
         st.markdown(f"""
         <div class='section-card' style='text-align:center;margin-top:55px;'>
             <div style='font-size:0.9rem;color:#888;'>Impact de l'action</div>
             <div style='font-size:2.8rem;font-weight:800;color:{dc};'>{delta*100:+.1f}%</div>
             <div style='color:{dc};font-weight:600;margin-top:6px;'>{di}</div>
-            <div style='color:#888;font-size:0.8rem;margin-top:12px;'>
-                Économie client : <b style='color:#00CC96;'>{charges_a - charges_b:.0f}€/mois</b>
-            </div>
+            {_savings_html}
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("💡 Recommandations pour ce client")
-    recs = get_recommendations(score_a, tenure_a, charges_a)
+    _tenure_cols  = ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client']
+    _charges_cols = ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen']
+    _ten_val = float(inputs_a.get(next((c for c in _tenure_cols  if c in inputs_a), ""), 24) or 24)
+    _chg_val = float(inputs_a.get(next((c for c in _charges_cols if c in inputs_a), ""), 65) or 65)
+    recs = get_recommendations(score_a, _ten_val, _chg_val)
     cols = st.columns(3)
     for i, rec in enumerate(recs):
         cols[i].markdown(f"<div class='section-card'><p style='color:#CBD5E1;margin:0;font-size:0.9rem;'>{rec}</p></div>", unsafe_allow_html=True)
@@ -926,9 +1025,22 @@ elif section == "🚨 Alertes Clients":
         tri = st.selectbox("Trier par", ["Score décroissant", "Charges décroissantes", "Ancienneté croissante"])
 
     clients_risque = df[df['ChurnProba'] > seuil / 100].copy()
-    if   tri == "Score décroissant":       clients_risque = clients_risque.sort_values('ChurnProba', ascending=False)
-    elif tri == "Charges décroissantes":   clients_risque = clients_risque.sort_values('MonthlyCharges', ascending=False)
-    else:                                  clients_risque = clients_risque.sort_values('tenure', ascending=True)
+    _al_charges_col = next((c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen'] if c in clients_risque.columns), None)
+    _al_tenure_col  = next((c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client'] if c in clients_risque.columns), None)
+    if tri == "Score décroissant":
+        clients_risque = clients_risque.sort_values('ChurnProba', ascending=False)
+    elif tri == "Charges décroissantes":
+        if _al_charges_col:
+            clients_risque = clients_risque.sort_values(_al_charges_col, ascending=False)
+        else:
+            clients_risque = clients_risque.sort_values('ChurnProba', ascending=False)
+            st.info("ℹ️ Tri par charges indisponible pour ce dataset — tri par score appliqué.")
+    else:
+        if _al_tenure_col:
+            clients_risque = clients_risque.sort_values(_al_tenure_col, ascending=True)
+        else:
+            clients_risque = clients_risque.sort_values('ChurnProba', ascending=False)
+            st.info("ℹ️ Tri par ancienneté indisponible pour ce dataset — tri par score appliqué.")
 
     # ── Moteur de triage statistique ────────────────────────────────
     clients_risque = triage_risque(clients_risque, df)
@@ -936,7 +1048,10 @@ elif section == "🚨 Alertes Clients":
     ca, cb, cc = st.columns(3)
     ca.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{len(clients_risque)}</h2><p>Clients à risque >{seuil}%</p></div>""", unsafe_allow_html=True)
     cb.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{clients_risque['ChurnProba'].mean()*100:.1f}%</h2><p>Score moyen du groupe</p></div>""", unsafe_allow_html=True)
-    cc.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{clients_risque['MonthlyCharges'].sum():.0f}€</h2><p>Revenu mensuel à risque</p></div>""", unsafe_allow_html=True)
+    if _al_charges_col:
+        cc.markdown(f"""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>{clients_risque[_al_charges_col].sum():.0f}€</h2><p>Revenu mensuel à risque</p></div>""", unsafe_allow_html=True)
+    else:
+        cc.markdown("""<div class="metric-container"><h2 style='margin:0;font-size:2rem;'>N/A</h2><p>Revenu mensuel à risque<br><small style='opacity:0.7;'>Colonne non disponible</small></p></div>""", unsafe_allow_html=True)
 
     # ── Filtre par Motif de Risque ───────────────────────────────────
     st.markdown("---")
@@ -1038,48 +1153,62 @@ elif section == "🤖 Assistant IA":
     </div>
     """, unsafe_allow_html=True)
 
+    n_urgent_init = int((df["ChurnProba"] > 0.6).sum()) if "ChurnProba" in df.columns else 0
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = [
-            {"role": "bot", "text": f"Bonjour ! Je suis l'Assistant IA de RetainIQ 🔮\n\nJe peux vous aider sur :\n- Les **risques de churn** de vos clients\n- Les **causes principales** de départ\n- Les **actions de rétention** recommandées\n- Le **fonctionnement du modèle XGBoost**\n\nActuellement **{len(df[df['ChurnProba'] > 0.6])} clients** sont en risque élevé. Que voulez-vous savoir ?"}
+            {
+                "role": "assistant",
+                "text": (
+                    f"Bonjour ! Je suis l'Assistant IA de RetainIQ, propulsé par Gemini 🔮\n\n"
+                    f"Je peux vous aider sur :\n"
+                    f"- Les **risques de churn** de vos clients\n"
+                    f"- Les **causes principales** de départ\n"
+                    f"- Les **actions de rétention** recommandées\n"
+                    f"- Le **fonctionnement du modèle XGBoost**\n\n"
+                    f"Actuellement **{n_urgent_init} clients** sont en risque élevé. Que voulez-vous savoir ?"
+                ),
+            }
         ]
 
+    # Render conversation history
     for msg in st.session_state.chat_history:
-        if msg["role"] == "user":
-            st.markdown(f"<div class='chat-user'>👤 {msg['text']}</div>", unsafe_allow_html=True)
-        else:
-            st.markdown(f"<div class='chat-bot'>🤖 {msg['text']}</div>", unsafe_allow_html=True)
+        role = "user" if msg["role"] == "user" else "assistant"
+        with st.chat_message(role):
+            st.markdown(msg["text"])
 
+    # Quick-question buttons (rendered before chat_input so they sit above the input bar)
     st.markdown("---")
-    st.subheader("💬 Questions rapides")
+    st.caption("💬 Questions rapides")
     quick_qs = [
         "Pourquoi les clients partent-ils ?",
         "Comment fonctionne XGBoost ?",
         "Que faire pour retenir un client ?",
         "Combien de clients sont urgents ?",
-        "RetainIQ fonctionne pour quels secteurs ?",
     ]
     cols = st.columns(len(quick_qs))
     for i, q in enumerate(quick_qs):
         if cols[i].button(q, key=f"qq_{i}", use_container_width=True):
             st.session_state.chat_history.append({"role": "user", "text": q})
-            st.session_state.chat_history.append({"role": "bot",  "text": chatbot_response(q)})
+            with st.spinner("L'IA analyse..."):
+                reply = gemini_chat_response(q, df)
+            st.session_state.chat_history.append({"role": "assistant", "text": reply})
             st.rerun()
 
-    with st.form("chat_form", clear_on_submit=True):
-        c1, c2 = st.columns([5, 1])
-        with c1:
-            user_input = st.text_input("Votre question...", label_visibility="collapsed",
-                                       placeholder="Ex: Pourquoi ce client risque de partir ?")
-        with c2:
-            submit = st.form_submit_button("Envoyer ➤", use_container_width=True)
-
-    if submit and user_input.strip():
-        st.session_state.chat_history.append({"role": "user", "text": user_input})
-        st.session_state.chat_history.append({"role": "bot",  "text": chatbot_response(user_input)})
+    if st.button("🗑️ Effacer la conversation", key="clear_chat"):
+        st.session_state.chat_history = []
         st.rerun()
 
-    if st.button("🗑️ Effacer la conversation"):
-        st.session_state.chat_history = []
+    # Main chat input (always pinned to bottom by Streamlit)
+    user_input = st.chat_input("Posez votre question à l'Assistant IA…")
+    if user_input and user_input.strip():
+        st.session_state.chat_history.append({"role": "user", "text": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        with st.chat_message("assistant"):
+            with st.spinner("L'IA analyse..."):
+                reply = gemini_chat_response(user_input, df)
+            st.markdown(reply)
+        st.session_state.chat_history.append({"role": "assistant", "text": reply})
         st.rerun()
 
 elif section == "📤 Importer mes données":

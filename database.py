@@ -33,7 +33,7 @@ def get_connection():
 # ── Initialisation du schéma ───────────────────────────────────────────────
 def init_db():
     """
-    Crée la table users si elle n'existe pas.
+    Crée les tables si elles n'existent pas.
     Sûr à appeler plusieurs fois (CREATE TABLE IF NOT EXISTS).
     """
     with get_connection() as conn:
@@ -45,6 +45,18 @@ def init_db():
                 company        TEXT NOT NULL DEFAULT '',
                 secteur        TEXT NOT NULL DEFAULT '',
                 created_at     TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reward_primitives (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email  TEXT NOT NULL,
+                label       TEXT NOT NULL,
+                action      TEXT NOT NULL DEFAULT '',
+                cible       TEXT NOT NULL DEFAULT '',
+                valeur      TEXT NOT NULL DEFAULT '',
+                duree       TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL
             )
         """)
 
@@ -132,6 +144,57 @@ def get_all_users() -> dict:
 def user_exists(email: str) -> bool:
     """Retourne True si l'email est déjà enregistré."""
     return get_user(email) is not None
+
+
+# ── Reward Primitives CRUD ─────────────────────────────────────────────────
+
+def get_reward_primitives(user_email: str) -> list:
+    """
+    Retourne toutes les primitives de récompense pour cet utilisateur.
+
+    Returns:
+        Liste de dicts avec clés : id, user_email, label, action, cible, valeur, duree, created_at
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM reward_primitives WHERE user_email = ? ORDER BY id",
+            (user_email,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def create_reward_primitive(
+    user_email: str,
+    label: str,
+    action: str,
+    cible: str,
+    valeur: str,
+    duree: str,
+) -> int:
+    """
+    Insère une nouvelle primitive de récompense.
+
+    Returns:
+        L'id auto-incrémenté de la ligne créée.
+    """
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO reward_primitives (user_email, label, action, cible, valeur, duree, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_email, label, action, cible, valeur, duree,
+                datetime.now().isoformat(sep=" ", timespec="seconds"),
+            ),
+        )
+        return cursor.lastrowid
+
+
+def delete_reward_primitive(primitive_id: int) -> None:
+    """Supprime la primitive identifiée par son id."""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM reward_primitives WHERE id = ?", (primitive_id,))
 
 
 # ── Bootstrap automatique ──────────────────────────────────────────────────
