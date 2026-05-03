@@ -3,6 +3,8 @@ database.py — Couche SQLite pour RetainIQ.
 
 Remplace users.json par une base de données SQLite légère.
 Appelé par auth.py. Ne dépend d'aucun autre module du projet.
+
+Rôles disponibles : 'admin', 'manager', 'conseiller'
 """
 
 import sqlite3
@@ -11,6 +13,8 @@ from datetime import datetime
 from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "retainiq.db")
+
+VALID_ROLES = ("admin", "manager", "conseiller")
 
 
 # ── Connexion ──────────────────────────────────────────────────────────────
@@ -35,6 +39,7 @@ def init_db():
     """
     Crée les tables si elles n'existent pas.
     Sûr à appeler plusieurs fois (CREATE TABLE IF NOT EXISTS).
+    Migre automatiquement la colonne `role` si absente.
     """
     with get_connection() as conn:
         conn.execute("""
@@ -44,9 +49,17 @@ def init_db():
                 hash_type      TEXT NOT NULL DEFAULT 'bcrypt',
                 company        TEXT NOT NULL DEFAULT '',
                 secteur        TEXT NOT NULL DEFAULT '',
+                role           TEXT NOT NULL DEFAULT 'conseiller',
                 created_at     TEXT NOT NULL
             )
         """)
+        # Migration silencieuse : ajoute `role` aux DB existantes
+        try:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'conseiller'"
+            )
+        except Exception:
+            pass  # colonne déjà présente
         conn.execute("""
             CREATE TABLE IF NOT EXISTS reward_primitives (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +80,7 @@ def get_user(email: str) -> dict | None:
     Retourne l'utilisateur correspondant à l'email, ou None s'il n'existe pas.
 
     Returns:
-        dict avec clés : email, password_hash, hash_type, company, secteur, created_at
+        dict avec clés : email, password_hash, hash_type, company, secteur, role, created_at
     """
     with get_connection() as conn:
         row = conn.execute(
@@ -82,23 +95,26 @@ def create_user(
     company: str,
     secteur: str,
     hash_type: str = "bcrypt",
+    role: str = "conseiller",
 ) -> None:
     """
     Insère un nouvel utilisateur.
 
     Raises:
-        ValueError: si l'email est déjà utilisé.
+        ValueError: si l'email est déjà utilisé ou si le rôle est invalide.
     """
     if get_user(email) is not None:
         raise ValueError(f"L'email '{email}' est déjà utilisé.")
+    if role not in VALID_ROLES:
+        raise ValueError(f"Rôle invalide '{role}'. Valeurs acceptées : {VALID_ROLES}")
 
     with get_connection() as conn:
         conn.execute(
             """
-            INSERT INTO users (email, password_hash, hash_type, company, secteur, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO users (email, password_hash, hash_type, company, secteur, role, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (email, password_hash, hash_type, company, secteur,
+            (email, password_hash, hash_type, company, secteur, role,
              datetime.now().isoformat(sep=" ", timespec="seconds")),
         )
 
@@ -141,9 +157,53 @@ def get_all_users() -> dict:
     }
 
 
+def get_all_users_admin() -> list[dict]:
+    """
+    Retourne tous les utilisateurs avec leur rôle — réservé au panneau Admin.
+
+    Returns:
+        Liste de dicts : email, company, secteur, role, created_at
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT email, company, secteur, role, created_at FROM users ORDER BY created_at"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_user_role(email: str, role: str) -> None:
+    """Met à jour le rôle d'un utilisateur."""
+    if role not in VALID_ROLES:
+        raise ValueError(f"Rôle invalide '{role}'.")
+    with get_connection() as conn:
+        conn.execute("UPDATE users SET role = ? WHERE email = ?", (role, email))
+
+
+def delete_user(email: str) -> None:
+    """Supprime un utilisateur et ses reward_primitives associées."""
+    with get_connection() as conn:
+        conn.execute("DELETE FROM reward_primitives WHERE user_email = ?", (email,))
+        conn.execute("DELETE FROM users WHERE email = ?", (email,))
+
+
 def user_exists(email: str) -> bool:
     """Retourne True si l'email est déjà enregistré."""
     return get_user(email) is not None
+
+
+def seed_default_users(hash_fn) -> None:
+    """
+    Crée les comptes de démonstration s'ils n'existent pas encore.
+    Appelé au démarrage de l'app avec hash_fn = auth.hash_password.
+    """
+    defaults = [
+        ("admin@retainiq.com",      "Admin123!",      "RetainIQ",        "📱 Télécom",        "admin"),
+        ("manager@retainiq.com",    "Manager123!",    "RetainIQ",        "📱 Télécom",        "manager"),
+        ("conseiller@retainiq.com", "Conseiller123!", "RetainIQ",        "📱 Télécom",        "conseiller"),
+    ]
+    for email, pwd, company, secteur, role in defaults:
+        if not user_exists(email):
+            create_user(email, hash_fn(pwd), company, secteur, role=role)
 
 
 # ── Reward Primitives CRUD ─────────────────────────────────────────────────

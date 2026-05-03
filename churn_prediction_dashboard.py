@@ -23,6 +23,7 @@ from plotly.subplots import make_subplots
 from data_pipeline import show_pipeline_page, load_user_model, triage_risque
 from shap_explainer import show_shap_page
 from email_reports import generate_pdf_report, send_pdf_via_sendgrid
+from email_service import send_campaign_email
 from auth import show_auth_page
 from loyalty_page import show_loyalty_page
 import scheduler as sched
@@ -40,6 +41,17 @@ if not st.session_state.logged_in:
 # ── L'utilisateur est connecté — on récupère ses infos ──────────
 user_company = st.session_state.get("user_company", "Mon Entreprise")
 user_secteur = st.session_state.get("user_secteur", "📱 Télécom")
+user_role    = st.session_state.get("user_role",    "conseiller")
+
+# Helpers RBAC
+_is_manager_or_admin = user_role in ("manager", "admin")
+_is_admin            = user_role == "admin"
+
+_ROLE_LABELS = {
+    "admin":      ("⚙️ Admin",      "#EF4444"),
+    "manager":    ("📊 Manager",    "#F59E0B"),
+    "conseiller": ("👤 Conseiller", "#10B981"),
+}
 
 # ── Démarrage du scheduler (une seule fois par processus) ────────
 if not st.session_state.get("_scheduler_started"):
@@ -165,24 +177,41 @@ cfg = SECTEUR_CONFIG[secteur]
 
 st.sidebar.markdown("---")
 
-# Navigation — restreinte si aucun modèle importé (Blank Slate)
-_blank_pages = ["🏠 Bienvenue", "📤 Importer mes données"]
-import os
-user_email = st.session_state.get("user_email", "")
-_email_safe = user_email.replace("@", "_at_").replace(".", "_")
-has_model = os.path.exists(f"model_{_email_safe}.pkl")
-
-# Ton code existant continue ici :
 # ── VÉRIFICATION DU MODÈLE (Blank Slate) ──
 import os
 user_email = st.session_state.get("user_email", "")
 _email_safe = user_email.replace("@", "_at_").replace(".", "_")
 has_model = os.path.exists(f"model_{_email_safe}.pkl")
 
-# ── MENU DE NAVIGATION ──
-_blank_pages = ["🏠 Bienvenue", "📤 Importer mes données"]
+# ── MENU DE NAVIGATION RBAC ─────────────────────────────────────
+# Pages accessibles à tous les rôles
+_pages_all = [
+    "🏠 Overview",
+    "🔮 AI Prediction",
+    "⚡ Simulateur What-If",
+    "🚨 Alertes Clients",
+    "🤖 Assistant IA",
+    "🏆 Programme de Fidélité",
+]
+# Pages réservées Manager + Admin
+_pages_manager = [
+    "📊 Visual Analytics",
+    "🌟 Future Scenarios",
+    "📤 Importer mes données",
+    "🧠 Explainable AI",
+    "📧 Campagnes & Rapports",
+]
+# Page réservée Admin uniquement
+_pages_admin = ["⚙️ Panneau Admin"]
 
 if not has_model:
+    # Blank Slate : accès limité selon le rôle
+    _blank_pages = ["🏠 Bienvenue"]
+    if _is_manager_or_admin:
+        _blank_pages.append("📤 Importer mes données")
+    if _is_admin:
+        _blank_pages.append("⚙️ Panneau Admin")
+
     st.sidebar.markdown("""
     <div style='background:#1C150A;border:1px solid #F59E0B;border-radius:8px;
                 padding:10px 12px;margin-bottom:8px;'>
@@ -191,45 +220,36 @@ if not has_model:
         </p>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Gestion sécurisée de l'index de navigation
+
     nav_demandee = st.session_state.get("_nav_override", "🏠 Bienvenue")
     _blank_default = _blank_pages.index(nav_demandee) if nav_demandee in _blank_pages else 0
     st.session_state.pop("_nav_override", None)
-    
-    section = st.sidebar.radio(
-        "🎯 Navigation",
-        _blank_pages,
-        index=_blank_default,
-    )
+
+    section = st.sidebar.radio("🎯 Navigation", _blank_pages, index=_blank_default)
 else:
-    section = st.sidebar.radio(
-        "🎯 Navigation",
-        [
-            "🏠 Overview",
-            "📊 Visual Analytics",
-            "🔮 AI Prediction",
-            "🌟 Future Scenarios",
-            "⚡ Simulateur What-If",
-            "🚨 Alertes Clients",
-            "🤖 Assistant IA",
-            "📤 Importer mes données",
-            "🧠 Explainable AI",
-            "⏰ Rapports Planifiés",
-            "🏆 Programme de Fidélité",
-        ]
-    )
+    # Menu complet filtré par rôle
+    _full_pages = list(_pages_all)
+    if _is_manager_or_admin:
+        _full_pages += _pages_manager
+    if _is_admin:
+        _full_pages += _pages_admin
+
+    section = st.sidebar.radio("🎯 Navigation", _full_pages)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"<div class='secteur-badge'>Secteur : {secteur}</div>", unsafe_allow_html=True)
+_role_label, _role_color = _ROLE_LABELS.get(user_role, ("👤 Conseiller", "#10B981"))
 st.sidebar.markdown(f"""
 <div style='background:#1a1d2e;border:1px solid #2d3748;
             border-radius:8px;padding:12px;margin-bottom:10px;'>
     <p style='color:#888;font-size:0.75rem;margin:0;'>Connecté en tant que</p>
     <p style='color:white;font-weight:600;margin:4px 0 0 0;
               font-size:0.9rem;'>{user_company}</p>
-    <p style='color:#667eea;font-size:0.8rem;margin:2px 0 0 0;'>
-              {user_secteur}</p>
+    <p style='color:#667eea;font-size:0.8rem;margin:2px 0 0 0;'>{user_secteur}</p>
+    <span style='display:inline-block;margin-top:6px;padding:3px 10px;
+                 border-radius:12px;background:{_role_color}22;
+                 border:1px solid {_role_color};color:{_role_color};
+                 font-size:0.75rem;font-weight:700;'>{_role_label}</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -399,6 +419,34 @@ def build_input_df(tenure, charges, contract, internet, security):
     return pd.DataFrame([inp])[feature_names]
 
 # triage_risque est importé depuis data_pipeline
+
+
+def gemini_draft_email(context: str, email_type: str) -> str:
+    """Generate a professional email draft using Gemini based on context and type."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return "⚠️ Clé GEMINI_API_KEY manquante dans le fichier `.env`."
+
+    _secteur  = st.session_state.get("user_secteur", "Non défini")
+    _company  = st.session_state.get("user_company", "Notre Entreprise")
+
+    prompt = (
+        f"Tu es un expert en marketing de rétention client B2B pour le secteur {_secteur}. "
+        f"Rédige un email professionnel, chaleureux et persuasif en français. "
+        f"Type d'email : {email_type}. Contexte : {context}. "
+        f"L'email est envoyé au nom de '{_company}'. "
+        f"Format : commence par 'Objet : ...' sur la première ligne, "
+        f"puis une ligne vide, puis le corps de l'email. "
+        f"Texte brut uniquement, pas de HTML. Sois concis (max 200 mots)."
+    )
+
+    genai.configure(api_key=api_key)
+    try:
+        _model_ai = genai.GenerativeModel("gemini-2.5-flash")
+        response  = _model_ai.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Erreur Gemini : {e}"
 
 
 def gemini_chat_response(question: str, df_clean: pd.DataFrame) -> str:
@@ -1219,124 +1267,545 @@ elif section == "📤 Importer mes données":
 elif section == "🧠 Explainable AI":
     show_shap_page(model, df, feature_names)
 
-elif section == "⏰ Rapports Planifiés":
-    st.markdown("## ⏰ Rapports Hebdomadaires Planifiés")
-    st.markdown("Gérez l'envoi automatique des rapports PDF à tous les utilisateurs enregistrés.")
-    st.markdown("---")
+elif section == "📧 Campagnes & Rapports":
+    st.markdown("""
+    <div class="main-header">
+        <h1 style='margin:0;color:white;'>📧 Campagnes & Rapports</h1>
+        <p style='margin:10px 0 0 0;opacity:0.9;color:white;'>
+            CRM intelligent — Rapports planifiés, relances ciblées et campagnes occasionnelles
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    status = sched.get_status()
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Mes Rapports Planifiés",
+        "🎯 Relance (Smart Rétention)",
+        "📢 Occasions & Fêtes",
+        "📜 Historique CRM",
+    ])
 
-    # ── Statut actuel ──────────────────────────────────────────────
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if status["running"]:
-            st.success("🟢 Scheduler actif")
-        else:
-            st.error("🔴 Scheduler inactif")
-    with col2:
-        st.metric("Prochaine exécution", status["next_run"])
-    with col3:
-        st.metric("Jobs enregistrés", status["job_count"])
+    # ══════════════════════════════════════════════════════════════
+    # TAB 1 — Rapports Planifiés (code original intégralement préservé)
+    # ══════════════════════════════════════════════════════════════
+    with tab1:
+        st.markdown("## ⏰ Rapports Hebdomadaires Planifiés")
+        st.markdown("Gérez l'envoi automatique des rapports PDF à tous les utilisateurs enregistrés.")
+        st.markdown("---")
 
-    st.markdown("---")
+        status = sched.get_status()
 
-    # ── Configuration de la diffusion ─────────────────────────────
-    st.markdown("### 📧 Configuration de la diffusion")
-    st.caption(
-        "Ces destinataires recevront les alertes de churn filtrées par motif de risque, "
-        "selon la planification définie ci-dessous."
-    )
+        # ── Statut actuel ──────────────────────────────────────────────
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if status["running"]:
+                st.success("🟢 Scheduler actif")
+            else:
+                st.error("🔴 Scheduler inactif")
+        with col2:
+            st.metric("Prochaine exécution", status["next_run"])
+        with col3:
+            st.metric("Jobs enregistrés", status["job_count"])
 
-    default_emails = st.session_state.get(
-        "report_recipients",
-        "manager1@entreprise.com, manager2@entreprise.com",
-    )
-    recipients_input = st.text_area(
-        "Adresses email des destinataires",
-        value=default_emails,
-        placeholder="manager1@entreprise.com, manager2@entreprise.com",
-        help="Saisissez les adresses email séparées par des virgules.",
-        key="recipients_textarea",
-    )
+        st.markdown("---")
 
-    if st.button("💾 Enregistrer la liste des managers", use_container_width=True):
-        st.session_state["report_recipients"] = recipients_input.strip()
-        emails_list = [e.strip() for e in recipients_input.split(",") if e.strip()]
-        st.success(
-            f"✅ Configuration sauvegardée — {len(emails_list)} destinataire(s) enregistré(s). "
-            "Ils recevront les alertes filtrées par motif de risque selon la planification ci-dessous."
+        # ── Configuration de la diffusion ─────────────────────────────
+        st.markdown("### 📧 Configuration de la diffusion")
+        st.caption(
+            "Ces destinataires recevront les alertes de churn filtrées par motif de risque, "
+            "selon la planification définie ci-dessous."
         )
 
-    st.markdown("---")
+        default_emails = st.session_state.get(
+            "report_recipients",
+            "manager1@entreprise.com, manager2@entreprise.com",
+        )
+        recipients_input = st.text_area(
+            "Adresses email des destinataires",
+            value=default_emails,
+            placeholder="manager1@entreprise.com, manager2@entreprise.com",
+            help="Saisissez les adresses email séparées par des virgules.",
+            key="recipients_textarea",
+        )
 
-    # ── Configuration de la planification ─────────────────────────
-    st.markdown("### ⚙️ Configurer la planification")
-
-    JOURS = {
-        "Lundi": "mon", "Mardi": "tue", "Mercredi": "wed",
-        "Jeudi": "thu", "Vendredi": "fri", "Samedi": "sat", "Dimanche": "sun",
-    }
-
-    jours_selectionnes = st.multiselect(
-        "Jours d'envoi",
-        options=list(JOURS.keys()),
-        default=["Lundi"],
-        key="sched_days",
-    )
-    heure_envoi = st.time_input(
-        "Heure d'envoi du rapport",
-        value=datetime.time(8, 0),
-        key="sched_time",
-    )
-
-    if st.button("💾 Enregistrer la planification", use_container_width=True):
-        if not jours_selectionnes:
-            st.warning("⚠️ Veuillez sélectionner au moins un jour d'envoi.")
-        else:
-            jours_cron = ",".join(JOURS[j] for j in jours_selectionnes)
-            sched.update_schedule(
-                day_of_week=jours_cron,
-                hour=heure_envoi.hour,
-                minute=heure_envoi.minute,
-            )
-            jours_str = ", ".join(jours_selectionnes)
+        if st.button("💾 Enregistrer la liste des managers", use_container_width=True):
+            st.session_state["report_recipients"] = recipients_input.strip()
+            emails_list = [e.strip() for e in recipients_input.split(",") if e.strip()]
             st.success(
-                f"✅ Planification mise à jour : chaque {jours_str} "
-                f"à {heure_envoi.strftime('%H:%M')}."
+                f"✅ Configuration sauvegardée — {len(emails_list)} destinataire(s) enregistré(s). "
+                "Ils recevront les alertes filtrées par motif de risque selon la planification ci-dessous."
             )
+
+        st.markdown("---")
+
+        # ── Configuration de la planification ─────────────────────────
+        st.markdown("### ⚙️ Configurer la planification")
+
+        JOURS = {
+            "Lundi": "mon", "Mardi": "tue", "Mercredi": "wed",
+            "Jeudi": "thu", "Vendredi": "fri", "Samedi": "sat", "Dimanche": "sun",
+        }
+
+        jours_selectionnes = st.multiselect(
+            "Jours d'envoi",
+            options=list(JOURS.keys()),
+            default=["Lundi"],
+            key="sched_days",
+        )
+        heure_envoi = st.time_input(
+            "Heure d'envoi du rapport",
+            value=datetime.time(8, 0),
+            key="sched_time",
+        )
+
+        if st.button("💾 Enregistrer la planification", use_container_width=True):
+            if not jours_selectionnes:
+                st.warning("⚠️ Veuillez sélectionner au moins un jour d'envoi.")
+            else:
+                jours_cron = ",".join(JOURS[j] for j in jours_selectionnes)
+                sched.update_schedule(
+                    day_of_week=jours_cron,
+                    hour=heure_envoi.hour,
+                    minute=heure_envoi.minute,
+                )
+                jours_str = ", ".join(jours_selectionnes)
+                st.success(
+                    f"✅ Planification mise à jour : chaque {jours_str} "
+                    f"à {heure_envoi.strftime('%H:%M')}."
+                )
+                st.rerun()
+
+        st.markdown("---")
+
+        # ── Envoi manuel ───────────────────────────────────────────────
+        st.markdown("### 🚀 Envoi manuel immédiat")
+        st.info("Déclenche l'envoi des rapports maintenant, sans attendre la planification.")
+
+        if st.button("📨 Envoyer les rapports maintenant", use_container_width=True, type="primary"):
+            with st.spinner("Génération et envoi des rapports en cours…"):
+                try:
+                    sched.trigger_now()
+                    st.success("✅ Rapports envoyés avec succès à tous les utilisateurs.")
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de l'envoi : {e}")
             st.rerun()
 
-    st.markdown("---")
+        st.markdown("---")
 
-    # ── Envoi manuel ───────────────────────────────────────────────
-    st.markdown("### 🚀 Envoi manuel immédiat")
-    st.info("Déclenche l'envoi des rapports maintenant, sans attendre la planification.")
+        # ── Historique des exécutions ──────────────────────────────────
+        st.markdown("### 📋 Historique des exécutions")
 
-    if st.button("📨 Envoyer les rapports maintenant", use_container_width=True, type="primary"):
-        with st.spinner("Génération et envoi des rapports en cours…"):
-            try:
-                sched.trigger_now()
-                st.success("✅ Rapports envoyés avec succès à tous les utilisateurs.")
-            except Exception as e:
-                st.error(f"❌ Erreur lors de l'envoi : {e}")
-        st.rerun()
+        history = status["history"]
+        if not history:
+            st.info("Aucune exécution enregistrée pour cette session.")
+        else:
+            hist_df = pd.DataFrame(history)[["date", "status", "duration_s", "detail"]]
+            hist_df.columns = ["Date", "Statut", "Durée (s)", "Détail"]
+            st.dataframe(hist_df, use_container_width=True, hide_index=True)
 
-    st.markdown("---")
+    # ══════════════════════════════════════════════════════════════
+    # TAB 2 — Relance Smart Rétention
+    # ══════════════════════════════════════════════════════════════
+    with tab2:
+        st.markdown("### 🎯 Relance Intelligente — Clients à Risque Élevé")
+        st.caption("Sélectionnez un client en danger et envoyez-lui un email de rétention personnalisé.")
 
-    # ── Historique des exécutions ──────────────────────────────────
-    st.markdown("### 📋 Historique des exécutions")
+        high_risk_df = df[df['ChurnProba'] > 0.6].copy().reset_index(drop=True)
+        high_risk_df.index = range(1, len(high_risk_df) + 1)
 
-    history = status["history"]
-    if not history:
-        st.info("Aucune exécution enregistrée pour cette session.")
-    else:
-        hist_df = pd.DataFrame(history)[["date", "status", "duration_s", "detail"]]
-        hist_df.columns = ["Date", "Statut", "Durée (s)", "Détail"]
-        st.dataframe(hist_df, use_container_width=True, hide_index=True)
+        if high_risk_df.empty:
+            st.info("ℹ️ Aucun client avec un score > 60% dans le dataset actuel.")
+        else:
+            _t2_charges_col = next(
+                (c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen']
+                 if c in high_risk_df.columns), None
+            )
+            _t2_tenure_col = next(
+                (c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client']
+                 if c in high_risk_df.columns), None
+            )
+
+            st.markdown(f"""
+            <div class='section-card'>
+                <span style='color:#EF4444;font-weight:700;font-size:1.1rem;'>🔴 {len(high_risk_df)} clients</span>
+                <span style='color:#94A3B8;'> en risque élevé (score &gt; 60%)</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            def _client_label(i, row):
+                parts = [f"Client N°{i}  —  Score {row['ChurnProba']*100:.0f}%"]
+                if _t2_tenure_col:
+                    parts.append(f"Ancienneté {row[_t2_tenure_col]:.0f} mois")
+                if _t2_charges_col:
+                    parts.append(f"{row[_t2_charges_col]:.0f}€/mois")
+                return "  ·  ".join(parts)
+
+            client_options = {
+                _client_label(i, row): i
+                for i, row in high_risk_df.iterrows()
+            }
+
+            selected_label = st.selectbox(
+                "🔍 Choisir un client à relancer",
+                options=list(client_options.keys()),
+                key="t2_client_select",
+            )
+            selected_idx = client_options[selected_label]
+            client_row   = high_risk_df.loc[selected_idx]
+            score_val    = float(client_row['ChurnProba'])
+
+            tenure_disp  = f"{client_row[_t2_tenure_col]:.0f} mois" if _t2_tenure_col else "N/A"
+            charges_disp = f"{client_row[_t2_charges_col]:.0f} €/mois" if _t2_charges_col else "N/A"
+            c_color      = "#EF4444" if score_val > 0.7 else "#F59E0B"
+
+            st.markdown(f"""
+            <div class='section-card' style='margin-top:0.8rem;'>
+                <div style='display:flex;gap:2.5rem;align-items:center;flex-wrap:wrap;'>
+                    <div>
+                        <p style='color:#888;font-size:0.75rem;margin:0;'>Score de churn</p>
+                        <p style='color:{c_color};font-size:1.7rem;font-weight:800;margin:0;'>{score_val*100:.1f}%</p>
+                    </div>
+                    <div>
+                        <p style='color:#888;font-size:0.75rem;margin:0;'>Ancienneté</p>
+                        <p style='color:white;font-size:1rem;font-weight:600;margin:0;'>{tenure_disp}</p>
+                    </div>
+                    <div>
+                        <p style='color:#888;font-size:0.75rem;margin:0;'>Charges mensuelles</p>
+                        <p style='color:white;font-size:1rem;font-weight:600;margin:0;'>{charges_disp}</p>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown("---")
+            st.markdown("#### 📨 Formulaire d'envoi")
+
+            _t2_to      = st.text_input(
+                "📮 Adresse email du destinataire",
+                placeholder="client@exemple.com",
+                key="t2_to",
+            )
+            _t2_subject = st.text_input(
+                "Objet de l'email",
+                value=f"Nous tenons à vous garder — Offre exclusive {user_company}",
+                key="t2_subject",
+            )
+
+            if "crm_draft_relance" not in st.session_state:
+                st.session_state["crm_draft_relance"] = ""
+
+            if st.button("✨ Générer le texte avec l'IA", key="gen_relance", use_container_width=True):
+                with st.spinner("Gemini rédige votre email de rétention…"):
+                    _ctx = (
+                        f"Client du secteur {secteur}, ancienneté {tenure_disp}, "
+                        f"charges {charges_disp}, score de risque de résiliation {score_val*100:.0f}%. "
+                        f"L'objectif est de le fidéliser avec une offre personnalisée attractive."
+                    )
+                    st.session_state["crm_draft_relance"] = gemini_draft_email(
+                        context=_ctx,
+                        email_type="relance de rétention personnalisée",
+                    )
+
+            _t2_body = st.text_area(
+                "Corps de l'email (modifiable avant envoi)",
+                value=st.session_state.get("crm_draft_relance", ""),
+                height=300,
+                key="t2_body",
+                placeholder="Cliquez sur '✨ Générer le texte avec l'IA' ou rédigez votre message ici…",
+            )
+
+            if st.button("📤 Envoyer l'email de relance", type="primary", use_container_width=True, key="send_relance"):
+                if not _t2_to.strip():
+                    st.error("Veuillez renseigner l'adresse email du destinataire.")
+                elif not _t2_body.strip():
+                    st.error("Le corps de l'email est vide.")
+                else:
+                    _html_body = "<p>" + _t2_body.replace("\n", "<br>") + "</p>"
+                    with st.spinner("Envoi en cours…"):
+                        _ok, _msg = send_campaign_email(_t2_to.strip(), _t2_subject, _html_body)
+                    if _ok:
+                        st.success(f"✅ Email envoyé à {_t2_to.strip()}")
+                        if "crm_history" not in st.session_state:
+                            st.session_state["crm_history"] = []
+                        st.session_state["crm_history"].append({
+                            "date":         datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "type":         "Relance Smart",
+                            "destinataire": _t2_to.strip(),
+                            "objet":        _t2_subject,
+                            "statut":       "✅ Envoyé",
+                        })
+                    else:
+                        st.warning(f"⚠️ {_msg}")
+
+    # ══════════════════════════════════════════════════════════════
+    # TAB 3 — Occasions & Fêtes
+    # ══════════════════════════════════════════════════════════════
+    with tab3:
+        st.markdown("### 📢 Campagne Occasion — Envoi Groupé")
+        st.caption("Envoyez un email de vœux ou de promotion à l'occasion d'un événement.")
+
+        _OCCASIONS = [
+            "🎉 Bonne Année",
+            "🌙 Aïd Moubarak",
+            "🌹 Fête des Mères",
+            "👨 Fête des Pères",
+            "🎄 Joyeux Noël",
+            "🇫🇷 Fête Nationale",
+            "🎓 Rentrée",
+            "🛒 Black Friday",
+            "✏️ Occasion personnalisée…",
+        ]
+
+        _col_occ1, _col_occ2 = st.columns(2)
+        with _col_occ1:
+            occasion_type = st.selectbox("🗓️ Type d'occasion", _OCCASIONS, key="t3_occasion")
+        with _col_occ2:
+            target_segment = st.selectbox(
+                "🎯 Segment cible",
+                ["Tous les clients", "Risque élevé (>60%)", "Risque modéré (35–60%)", "Clients fidèles (<35%)"],
+                key="t3_segment",
+            )
+
+        if occasion_type == "✏️ Occasion personnalisée…":
+            occasion_label = st.text_input(
+                "Décrivez l'occasion",
+                placeholder="Ex : Anniversaire 5 ans de l'entreprise",
+                key="t3_custom",
+            )
+        else:
+            occasion_label = occasion_type
+
+        _t3_to = st.text_input(
+            "📮 Email(s) destinataire(s) — séparés par des virgules",
+            placeholder="contact1@exemple.com, contact2@exemple.com",
+            key="t3_to",
+        )
+        _t3_subject = st.text_input(
+            "Objet de l'email",
+            value=f"{occasion_label} — {user_company}",
+            key="t3_subject",
+        )
+
+        # Compte du segment sélectionné
+        if "élevé" in target_segment:
+            n_segment = len(df[df['ChurnProba'] > 0.6])
+        elif "modéré" in target_segment:
+            n_segment = len(df[(df['ChurnProba'] > 0.35) & (df['ChurnProba'] <= 0.6)])
+        elif "fidèles" in target_segment:
+            n_segment = len(df[df['ChurnProba'] <= 0.35])
+        else:
+            n_segment = len(df)
+
+        if "crm_draft_occasion" not in st.session_state:
+            st.session_state["crm_draft_occasion"] = ""
+
+        if st.button("✨ Générer le texte avec l'IA", key="gen_occasion", use_container_width=True):
+            with st.spinner("Gemini rédige votre email de campagne…"):
+                _ctx = (
+                    f"Occasion : {occasion_label}. Secteur : {secteur}. "
+                    f"Segment cible : {target_segment} ({n_segment} clients). "
+                    f"Entreprise : {user_company}."
+                )
+                st.session_state["crm_draft_occasion"] = gemini_draft_email(
+                    context=_ctx,
+                    email_type="email de vœux ou promotion pour une occasion spéciale",
+                )
+
+        _t3_body = st.text_area(
+            "Corps de l'email (modifiable avant envoi)",
+            value=st.session_state.get("crm_draft_occasion", ""),
+            height=300,
+            key="t3_body",
+            placeholder="Cliquez sur '✨ Générer le texte avec l'IA' ou rédigez votre message ici…",
+        )
+
+        _col_seg_info, _col_send_btn = st.columns([2, 1])
+        with _col_seg_info:
+            st.info(f"📊 Segment : **{target_segment}** — {n_segment} clients concernés dans votre base")
+        with _col_send_btn:
+            if st.button("📤 Envoyer la campagne", type="primary", use_container_width=True, key="send_occasion"):
+                if not _t3_to.strip():
+                    st.error("Veuillez renseigner au moins un email destinataire.")
+                elif not _t3_body.strip():
+                    st.error("Le corps de l'email est vide.")
+                else:
+                    _recipients_list = [e.strip() for e in _t3_to.split(",") if e.strip()]
+                    _html_body       = "<p>" + _t3_body.replace("\n", "<br>") + "</p>"
+                    _sent, _failed   = 0, 0
+                    with st.spinner(f"Envoi à {len(_recipients_list)} destinataire(s)…"):
+                        for _addr in _recipients_list:
+                            _ok, _msg = send_campaign_email(_addr, _t3_subject, _html_body)
+                            if _ok:
+                                _sent += 1
+                            else:
+                                _failed += 1
+                    if _sent > 0:
+                        st.success(f"✅ {_sent} email(s) envoyé(s) avec succès.")
+                        if "crm_history" not in st.session_state:
+                            st.session_state["crm_history"] = []
+                        st.session_state["crm_history"].append({
+                            "date":         datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                            "type":         f"Campagne {occasion_label}",
+                            "destinataire": f"{_sent} destinataire(s)",
+                            "objet":        _t3_subject,
+                            "statut":       "✅ Envoyé" if _failed == 0 else f"⚠️ {_failed} échec(s)",
+                        })
+                    if _failed > 0:
+                        st.warning(f"⚠️ {_failed} envoi(s) échoué(s) — vérifiez BREVO_API_KEY et FROM_EMAIL dans .env")
+
+    # ══════════════════════════════════════════════════════════════
+    # TAB 4 — Historique CRM
+    # ══════════════════════════════════════════════════════════════
+    with tab4:
+        st.markdown("### 📜 Historique des Envois CRM")
+        st.caption("Suivi de toutes les campagnes et relances envoyées durant cette session.")
+
+        # Données de démonstration pré-chargées au premier accès
+        if "crm_history" not in st.session_state:
+            st.session_state["crm_history"] = [
+                {
+                    "date": "28/04/2026 09:15", "type": "Rapport hebdomadaire",
+                    "destinataire": "manager@entreprise.com",
+                    "objet": "RetainIQ — Rapport semaine 17", "statut": "✅ Envoyé",
+                },
+                {
+                    "date": "25/04/2026 08:00", "type": "Relance Smart",
+                    "destinataire": "client.vip@exemple.com",
+                    "objet": "Nous tenons à vous garder — Offre exclusive", "statut": "✅ Envoyé",
+                },
+                {
+                    "date": "21/04/2026 10:30", "type": "Rapport hebdomadaire",
+                    "destinataire": "direction@entreprise.com",
+                    "objet": "RetainIQ — Rapport semaine 16", "statut": "✅ Envoyé",
+                },
+                {
+                    "date": "14/04/2026 08:00", "type": "Campagne 🌙 Aïd Moubarak",
+                    "destinataire": "856 destinataires",
+                    "objet": "Aïd Moubarak — Offre spéciale pour vous", "statut": "✅ Envoyé",
+                },
+                {
+                    "date": "07/04/2026 08:00", "type": "Rapport hebdomadaire",
+                    "destinataire": "manager@entreprise.com",
+                    "objet": "RetainIQ — Rapport semaine 14", "statut": "⚠️ 1 échec",
+                },
+            ]
+
+        _history_records = st.session_state["crm_history"]
+        _hist_crm_df = pd.DataFrame(_history_records[::-1])
+        _hist_crm_df.columns = ["Date", "Type", "Destinataire(s)", "Objet", "Statut"]
+        st.dataframe(_hist_crm_df, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        _cs1, _cs2, _cs3 = st.columns(3)
+        _cs1.metric("📧 Total envois", len(_history_records))
+        _cs2.metric("📢 Campagnes",    sum(1 for r in _history_records if "Campagne" in r["type"]))
+        _cs3.metric("🎯 Relances",     sum(1 for r in _history_records if "Relance" in r["type"]))
 
 
 elif section == "🏆 Programme de Fidélité":
-    show_loyalty_page(df, secteur, user_company, user_email)
+    show_loyalty_page(df, secteur, user_company, user_email, user_role)
+
+elif section == "⚙️ Panneau Admin":
+    # ── Garde de sécurité côté serveur ──────────────────────────
+    if not _is_admin:
+        st.error("⛔ Accès refusé — réservé aux administrateurs.")
+        st.stop()
+
+    from database import get_all_users_admin, update_user_role, delete_user, VALID_ROLES
+    from auth import register_user
+
+    st.markdown("""
+    <div class='main-header'>
+        <h1>⚙️ Panneau d'Administration</h1>
+        <p>Gestion des utilisateurs et des accès</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Tableau des utilisateurs ─────────────────────────────────
+    st.markdown("### 👥 Utilisateurs enregistrés")
+    all_users = get_all_users_admin()
+
+    _ROLE_COLORS_HEX = {"admin": "#EF4444", "manager": "#F59E0B", "conseiller": "#10B981"}
+    _ROLE_ICONS       = {"admin": "⚙️", "manager": "📊", "conseiller": "👤"}
+
+    for u in all_users:
+        rc = _ROLE_COLORS_HEX.get(u["role"], "#888")
+        ri = _ROLE_ICONS.get(u["role"], "👤")
+        col_info, col_role, col_del = st.columns([4, 2, 1])
+        with col_info:
+            st.markdown(f"""
+            <div style='background:#1a1d2e;border:1px solid #2d3748;border-radius:8px;
+                        padding:10px 14px;margin:4px 0;'>
+                <span style='color:white;font-weight:600;'>{u['email']}</span><br>
+                <span style='color:#888;font-size:0.8rem;'>{u['company']} · {u['secteur']}</span>
+            </div>""", unsafe_allow_html=True)
+        with col_role:
+            new_role = st.selectbox(
+                "Rôle",
+                options=list(VALID_ROLES),
+                index=list(VALID_ROLES).index(u["role"]) if u["role"] in VALID_ROLES else 2,
+                key=f"role_{u['email']}",
+                label_visibility="collapsed",
+            )
+            if new_role != u["role"]:
+                if st.button("💾 Sauvegarder", key=f"save_{u['email']}", use_container_width=True):
+                    update_user_role(u["email"], new_role)
+                    st.success(f"Rôle de {u['email']} mis à jour → {new_role}")
+                    st.rerun()
+        with col_del:
+            if u["email"] != user_email:  # on ne peut pas se supprimer soi-même
+                if st.button("🗑️", key=f"del_{u['email']}", help=f"Supprimer {u['email']}"):
+                    delete_user(u["email"])
+                    st.warning(f"Compte {u['email']} supprimé.")
+                    st.rerun()
+            else:
+                st.markdown("<p style='color:#555;font-size:0.75rem;text-align:center;padding-top:12px;'>Vous</p>",
+                            unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ── Création d'un nouveau compte ─────────────────────────────
+    st.markdown("### ➕ Créer un nouveau compte")
+    with st.form("admin_create_user_form"):
+        c1, c2 = st.columns(2)
+        with c1:
+            new_email   = st.text_input("Email", placeholder="prenom.nom@entreprise.com")
+            new_company = st.text_input("Entreprise", placeholder="Ex: Orange, Fitness Park…")
+            new_pwd     = st.text_input("Mot de passe", type="password")
+        with c2:
+            new_secteur = st.selectbox("Secteur", [
+                "📱 Télécom", "💪 Salle de Sport",
+                "🛍️ E-commerce", "🎓 EdTech", "☁️ SaaS B2B",
+            ])
+            new_role    = st.selectbox("Rôle", ["conseiller", "manager", "admin"])
+            new_confirm = st.text_input("Confirmer le mot de passe", type="password")
+        submitted = st.form_submit_button("✅ Créer le compte", use_container_width=True, type="primary")
+
+    if submitted:
+        if not all([new_email, new_company, new_pwd, new_confirm]):
+            st.error("Tous les champs sont obligatoires.")
+        elif new_pwd != new_confirm:
+            st.error("Les mots de passe ne correspondent pas.")
+        elif len(new_pwd) < 6:
+            st.error("Le mot de passe doit contenir au moins 6 caractères.")
+        else:
+            ok, msg = register_user(new_email, new_pwd, new_company, new_secteur, role=new_role)
+            if ok:
+                st.success(f"✅ Compte créé : {new_email} ({new_role})")
+                st.rerun()
+            else:
+                st.error(msg)
+
+    st.markdown("---")
+    st.markdown("### 📋 Comptes de démonstration")
+    st.info("""
+    **Comptes pré-créés pour tester le RBAC :**\n
+    | Email | Mot de passe | Rôle |
+    |---|---|---|
+    | admin@retainiq.com | Admin123! | Admin |
+    | manager@retainiq.com | Manager123! | Manager |
+    | conseiller@retainiq.com | Conseiller123! | Conseiller |
+    """)
+
 # ══════════════════════════════════════════════════════════════════
 # FOOTER
 # ════════════════════════════════════════════════════════════════

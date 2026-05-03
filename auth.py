@@ -13,7 +13,10 @@ import hashlib
 import streamlit as st
 import bcrypt
 
-from database import create_user, get_user, get_all_users, update_user_hash, user_exists
+from database import (
+    create_user, get_user, get_all_users, update_user_hash,
+    user_exists, seed_default_users,
+)
 
 
 # ── Hashing ────────────────────────────────────────────────────────────────
@@ -50,8 +53,13 @@ def load_users() -> dict:
     return get_all_users()
 
 
+# ── Comptes de démonstration ───────────────────────────────────────────────
+seed_default_users(hash_password)
+
+
 # ── Inscription ────────────────────────────────────────────────────────────
-def register_user(email: str, password: str, company: str, secteur: str):
+def register_user(email: str, password: str, company: str, secteur: str,
+                  role: str = "conseiller"):
     """
     Crée un nouveau compte avec un hash bcrypt.
 
@@ -63,7 +71,7 @@ def register_user(email: str, password: str, company: str, secteur: str):
 
     pw_hash = hash_password(password)
     try:
-        create_user(email, pw_hash, company, secteur, hash_type="bcrypt")
+        create_user(email, pw_hash, company, secteur, hash_type="bcrypt", role=role)
     except Exception as e:
         return False, f"Erreur lors de la création du compte : {e}"
 
@@ -97,6 +105,7 @@ def login_user(email: str, password: str):
     return True, {
         "company":    user["company"],
         "secteur":    user["secteur"],
+        "role":       user.get("role", "conseiller"),
         "created_at": user["created_at"],
     }
 
@@ -134,6 +143,7 @@ def show_auth_page():
                     st.session_state.user_email   = email
                     st.session_state.user_company = result["company"]
                     st.session_state.user_secteur = result["secteur"]
+                    st.session_state.user_role    = result.get("role", "conseiller")
                     st.success("Connexion réussie !")
                     st.rerun()
                 else:

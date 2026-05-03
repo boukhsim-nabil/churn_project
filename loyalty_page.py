@@ -120,7 +120,7 @@ def segment_clients(df, secteur):
 
 
 # ── PAGE PRINCIPALE ───────────────────────────────────────────────────────────
-def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
+def show_loyalty_page(df, secteur, user_company, user_email: str = "", user_role: str = "conseiller"):
     from data_pipeline import triage_risque
 
     st.markdown("""
@@ -414,10 +414,13 @@ def show_loyalty_page(df, secteur, user_company, user_email: str = ""):
             )
             st.balloons()
 
-    # ── PANNEAU DE CONFIGURATION (repliable) ─────────────────────────────────
+    # ── PANNEAU DE CONFIGURATION (admin & manager uniquement) ────────────────
     st.markdown("---")
-    with st.expander("⚙️ Configurer les Récompenses & Règles de campagne", expanded=False):
-        _render_config_panel(user_email, user_company, secteur)
+    if user_role in ("admin", "manager"):
+        with st.expander("⚙️ Configurer les Récompenses & Règles de campagne", expanded=False):
+            _render_config_panel(user_email, user_company, secteur)
+    else:
+        st.info("🔒 La configuration des règles de campagne est réservée aux managers et administrateurs.")
 
 
 def _render_config_panel(user_email: str, user_company: str, secteur: str):
