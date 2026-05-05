@@ -333,7 +333,8 @@ if custom_model is not None and custom_features is not None and custom_df is not
     feature_names = custom_features
     df = custom_df.copy()
     if 'ChurnProba' not in df.columns:
-        X_all_custom = df.drop("Churn", axis=1)
+        # Utiliser uniquement les features ML (exclut les colonnes CRM réintégrées)
+        X_all_custom = df[custom_features]
         df['ChurnProba'] = model.predict_proba(X_all_custom)[:, 1]
     if 'RiskLevel' not in df.columns:
         df['RiskLevel'] = df['ChurnProba'].apply(
@@ -594,7 +595,7 @@ elif section == "🏠 Overview":
 
     sample_df      = df.head(10).copy()
     sample_features= sample_df.drop(['Churn', 'ChurnProba', 'RiskLevel'], axis=1, errors='ignore')
-    risk_scores    = model.predict_proba(sample_features)[:, 1]
+    risk_scores    = model.predict_proba(sample_features[feature_names])[:, 1]
 
     _ov_tenure_col  = next((c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client'] if c in sample_df.columns), None)
     _ov_charges_col = next((c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen'] if c in sample_df.columns), None)
@@ -884,8 +885,8 @@ elif section == "🌟 Future Scenarios":
 
         X_scenario    = df_scenario.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1, errors='ignore')
         X_current     = df.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1, errors='ignore')
-        future_probas = model.predict_proba(X_scenario)[:, 1]
-        current_probas= model.predict_proba(X_current)[:, 1]
+        future_probas = model.predict_proba(X_scenario[feature_names])[:, 1]
+        current_probas= model.predict_proba(X_current[feature_names])[:, 1]
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1406,141 +1407,350 @@ elif section == "📧 Campagnes & Rapports":
     # TAB 2 — Relance Smart Rétention
     # ══════════════════════════════════════════════════════════════
     with tab2:
-        st.markdown("### 🎯 Relance Intelligente — Clients à Risque Élevé")
-        st.caption("Sélectionnez un client en danger et envoyez-lui un email de rétention personnalisé.")
+        st.markdown("### 🎯 Relance Intelligente — Clients à Risque")
 
-        high_risk_df = df[df['ChurnProba'] > 0.6].copy().reset_index(drop=True)
-        high_risk_df.index = range(1, len(high_risk_df) + 1)
+        _t2_mode = st.radio(
+            "Mode d'envoi",
+            ["👤 Relance Individuelle (Recherche)", "👥 Relance Groupée (Filtres)"],
+            horizontal=True,
+            key="t2_mode",
+        )
+        st.markdown("---")
 
-        if high_risk_df.empty:
-            st.info("ℹ️ Aucun client avec un score > 60% dans le dataset actuel.")
-        else:
-            _t2_charges_col = next(
-                (c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen']
-                 if c in high_risk_df.columns), None
-            )
-            _t2_tenure_col = next(
-                (c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client']
-                 if c in high_risk_df.columns), None
-            )
+        # Détection des colonnes — partagée entre les deux modes
+        _t2_charges_col = next(
+            (c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen']
+             if c in df.columns), None
+        )
+        _t2_tenure_col = next(
+            (c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client']
+             if c in df.columns), None
+        )
+        _t2_email_col = next(
+            (c for c in df.columns
+             if any(kw in c.lower() for kw in ['email', 'mail', 'courriel'])),
+            None,
+        )
+        _t2_phone_col = next(
+            (c for c in df.columns
+             if any(kw in c.lower() for kw in ['phone', 'tel', 'telephone', 'mobile'])),
+            None,
+        )
+        _t2_name_col = next(
+            (c for c in df.columns
+             if any(kw in c.lower() for kw in ['name', 'nom', 'prenom', 'client_name'])),
+            None,
+        )
 
-            st.markdown(f"""
-            <div class='section-card'>
-                <span style='color:#EF4444;font-weight:700;font-size:1.1rem;'>🔴 {len(high_risk_df)} clients</span>
-                <span style='color:#94A3B8;'> en risque élevé (score &gt; 60%)</span>
-            </div>
-            """, unsafe_allow_html=True)
+        # ── MODE INDIVIDUEL ────────────────────────────────────────────
+        if _t2_mode == "👤 Relance Individuelle (Recherche)":
+            st.caption("Sélectionnez un client en danger et envoyez-lui un email de rétention personnalisé.")
 
-            def _client_label(i, row):
-                parts = [f"Client N°{i}  —  Score {row['ChurnProba']*100:.0f}%"]
-                if _t2_tenure_col:
-                    parts.append(f"Ancienneté {row[_t2_tenure_col]:.0f} mois")
-                if _t2_charges_col:
-                    parts.append(f"{row[_t2_charges_col]:.0f}€/mois")
-                return "  ·  ".join(parts)
+            high_risk_df = df[df['ChurnProba'] > 0.6].copy().reset_index(drop=True)
+            high_risk_df.index = range(1, len(high_risk_df) + 1)
 
-            client_options = {
-                _client_label(i, row): i
-                for i, row in high_risk_df.iterrows()
-            }
+            if high_risk_df.empty:
+                st.info("ℹ️ Aucun client avec un score > 60% dans le dataset actuel.")
+            else:
+                st.markdown(f"""
+                <div class='section-card'>
+                    <span style='color:#EF4444;font-weight:700;font-size:1.1rem;'>🔴 {len(high_risk_df)} clients</span>
+                    <span style='color:#94A3B8;'> en risque élevé (score &gt; 60%)</span>
+                </div>
+                """, unsafe_allow_html=True)
 
-            selected_label = st.selectbox(
-                "🔍 Choisir un client à relancer",
-                options=list(client_options.keys()),
-                key="t2_client_select",
-            )
-            selected_idx = client_options[selected_label]
-            client_row   = high_risk_df.loc[selected_idx]
-            score_val    = float(client_row['ChurnProba'])
+                def _client_label(i, row):
+                    _email_val = None
+                    if _t2_email_col:
+                        _raw = row.get(_t2_email_col)
+                        if _raw is not None and pd.notna(_raw) and str(_raw).strip():
+                            _email_val = str(_raw).strip()
+                    identifier = _email_val if _email_val else f"Client N°{i}"
+                    parts = [f"{identifier}  —  Score {row['ChurnProba']*100:.0f}%"]
+                    if _t2_phone_col:
+                        _ph = row.get(_t2_phone_col)
+                        if _ph is not None and pd.notna(_ph) and str(_ph).strip():
+                            parts.append(f"📞 {str(_ph).strip()}")
+                    if _t2_tenure_col:
+                        parts.append(f"Ancienneté {row[_t2_tenure_col]:.0f} mois")
+                    if _t2_charges_col:
+                        parts.append(f"{row[_t2_charges_col]:.0f}€/mois")
+                    return "  ·  ".join(parts)
 
-            tenure_disp  = f"{client_row[_t2_tenure_col]:.0f} mois" if _t2_tenure_col else "N/A"
-            charges_disp = f"{client_row[_t2_charges_col]:.0f} €/mois" if _t2_charges_col else "N/A"
-            c_color      = "#EF4444" if score_val > 0.7 else "#F59E0B"
+                client_options = {
+                    _client_label(i, row): i
+                    for i, row in high_risk_df.iterrows()
+                }
 
-            st.markdown(f"""
-            <div class='section-card' style='margin-top:0.8rem;'>
-                <div style='display:flex;gap:2.5rem;align-items:center;flex-wrap:wrap;'>
-                    <div>
-                        <p style='color:#888;font-size:0.75rem;margin:0;'>Score de churn</p>
-                        <p style='color:{c_color};font-size:1.7rem;font-weight:800;margin:0;'>{score_val*100:.1f}%</p>
-                    </div>
-                    <div>
-                        <p style='color:#888;font-size:0.75rem;margin:0;'>Ancienneté</p>
-                        <p style='color:white;font-size:1rem;font-weight:600;margin:0;'>{tenure_disp}</p>
-                    </div>
-                    <div>
-                        <p style='color:#888;font-size:0.75rem;margin:0;'>Charges mensuelles</p>
-                        <p style='color:white;font-size:1rem;font-weight:600;margin:0;'>{charges_disp}</p>
+                selected_label = st.selectbox(
+                    "🔍 Choisir un client à relancer",
+                    options=list(client_options.keys()),
+                    key="t2_client_select",
+                )
+                selected_idx = client_options[selected_label]
+                client_row   = high_risk_df.loc[selected_idx]
+                score_val    = float(client_row['ChurnProba'])
+
+                _t2_email_prefill = ""
+                if _t2_email_col:
+                    _raw_email = client_row.get(_t2_email_col)
+                    if _raw_email is not None and pd.notna(_raw_email) and str(_raw_email).strip():
+                        _t2_email_prefill = str(_raw_email).strip()
+
+                tenure_disp  = f"{client_row[_t2_tenure_col]:.0f} mois" if _t2_tenure_col else "N/A"
+                charges_disp = f"{client_row[_t2_charges_col]:.0f} €/mois" if _t2_charges_col else "N/A"
+                c_color      = "#EF4444" if score_val > 0.7 else "#F59E0B"
+
+                st.markdown(f"""
+                <div class='section-card' style='margin-top:0.8rem;'>
+                    <div style='display:flex;gap:2.5rem;align-items:center;flex-wrap:wrap;'>
+                        <div>
+                            <p style='color:#888;font-size:0.75rem;margin:0;'>Score de churn</p>
+                            <p style='color:{c_color};font-size:1.7rem;font-weight:800;margin:0;'>{score_val*100:.1f}%</p>
+                        </div>
+                        <div>
+                            <p style='color:#888;font-size:0.75rem;margin:0;'>Ancienneté</p>
+                            <p style='color:white;font-size:1rem;font-weight:600;margin:0;'>{tenure_disp}</p>
+                        </div>
+                        <div>
+                            <p style='color:#888;font-size:0.75rem;margin:0;'>Charges mensuelles</p>
+                            <p style='color:white;font-size:1rem;font-weight:600;margin:0;'>{charges_disp}</p>
+                        </div>
                     </div>
                 </div>
+                """, unsafe_allow_html=True)
+
+                st.markdown("---")
+                st.markdown("#### 📨 Formulaire d'envoi")
+
+                _t2_to = st.text_input(
+                    "📮 Adresse email du destinataire",
+                    value=_t2_email_prefill,
+                    placeholder="client@exemple.com",
+                    key=f"t2_to_{selected_idx}",
+                )
+                _t2_subject = st.text_input(
+                    "Objet de l'email",
+                    value=f"Nous tenons à vous garder — Offre exclusive {user_company}",
+                    key="t2_subject",
+                )
+
+                if "crm_draft_relance" not in st.session_state:
+                    st.session_state["crm_draft_relance"] = ""
+
+                if st.button("✨ Générer le texte avec l'IA", key="gen_relance", use_container_width=True):
+                    with st.spinner("Gemini rédige votre email de rétention…"):
+                        _ctx = (
+                            f"Client du secteur {secteur}, ancienneté {tenure_disp}, "
+                            f"charges {charges_disp}, score de risque de résiliation {score_val*100:.0f}%. "
+                            f"L'objectif est de le fidéliser avec une offre personnalisée attractive."
+                        )
+                        st.session_state["crm_draft_relance"] = gemini_draft_email(
+                            context=_ctx,
+                            email_type="relance de rétention personnalisée",
+                        )
+
+                _t2_body = st.text_area(
+                    "Corps de l'email (modifiable avant envoi)",
+                    value=st.session_state.get("crm_draft_relance", ""),
+                    height=300,
+                    key="t2_body",
+                    placeholder="Cliquez sur '✨ Générer le texte avec l'IA' ou rédigez votre message ici…",
+                )
+
+                if st.button("📤 Envoyer l'email de relance", type="primary", use_container_width=True, key="send_relance"):
+                    if not _t2_to.strip():
+                        st.error("Veuillez renseigner l'adresse email du destinataire.")
+                    elif not _t2_body.strip():
+                        st.error("Le corps de l'email est vide.")
+                    else:
+                        _html_body = "<p>" + _t2_body.replace("\n", "<br>") + "</p>"
+                        with st.spinner("Envoi en cours…"):
+                            _ok, _msg = send_campaign_email(_t2_to.strip(), _t2_subject, _html_body)
+                        if _ok:
+                            st.success(f"✅ Email envoyé à {_t2_to.strip()}")
+                            if "crm_history" not in st.session_state:
+                                st.session_state["crm_history"] = []
+                            st.session_state["crm_history"].append({
+                                "date":         datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "type":         "Relance Smart",
+                                "destinataire": _t2_to.strip(),
+                                "objet":        _t2_subject,
+                                "statut":       "✅ Envoyé",
+                            })
+                        else:
+                            st.warning(f"⚠️ {_msg}")
+
+        # ── MODE GROUPÉ ────────────────────────────────────────────────
+        else:
+            st.caption("Appliquez des filtres pour cibler un groupe de clients et envoyez-leur un email en masse.")
+
+            st.markdown("#### 🔧 Filtres de segmentation")
+            _fg1, _fg2 = st.columns(2)
+
+            with _fg1:
+                _risk_min, _risk_max = st.slider(
+                    "🎯 Score de risque (%)",
+                    min_value=0, max_value=100,
+                    value=(60, 100),
+                    step=5,
+                    key="t2g_risk_range",
+                )
+            with _fg2:
+                if _t2_tenure_col and df[_t2_tenure_col].notna().any():
+                    _ten_min_v = int(df[_t2_tenure_col].min())
+                    _ten_max_v = int(df[_t2_tenure_col].max())
+                    _ten_range = st.slider(
+                        "📅 Ancienneté (mois)",
+                        min_value=_ten_min_v, max_value=_ten_max_v,
+                        value=(_ten_min_v, _ten_max_v),
+                        key="t2g_tenure_range",
+                    )
+                else:
+                    _ten_range = None
+
+            _t2_contract_col = next(
+                (c for c in df.columns if 'contract' in c.lower() or 'contrat' in c.lower()),
+                None,
+            )
+            if _t2_contract_col:
+                _contract_opts = ["Tous"] + sorted(
+                    [str(v) for v in df[_t2_contract_col].dropna().unique()]
+                )
+                _sel_contract = st.selectbox(
+                    f"📄 Type de contrat ({_t2_contract_col})",
+                    _contract_opts,
+                    key="t2g_contract",
+                )
+            else:
+                _sel_contract = "Tous"
+
+            _mask = (
+                (df['ChurnProba'] >= _risk_min / 100) &
+                (df['ChurnProba'] <= _risk_max / 100)
+            )
+            if _ten_range and _t2_tenure_col:
+                _mask &= (
+                    (df[_t2_tenure_col] >= _ten_range[0]) &
+                    (df[_t2_tenure_col] <= _ten_range[1])
+                )
+            if _sel_contract != "Tous" and _t2_contract_col:
+                _mask &= df[_t2_contract_col].astype(str) == _sel_contract
+
+            _filtered_df = df[_mask].copy()
+
+            _preview_cols = []
+            if _t2_email_col:
+                _preview_cols.append(_t2_email_col)
+            if _t2_name_col:
+                _preview_cols.append(_t2_name_col)
+            _preview_cols.append('ChurnProba')
+            _preview_cols.append('RiskLevel')
+            if _t2_tenure_col and _t2_tenure_col not in _preview_cols:
+                _preview_cols.append(_t2_tenure_col)
+            if _t2_charges_col and _t2_charges_col not in _preview_cols:
+                _preview_cols.append(_t2_charges_col)
+            _preview_cols = [c for c in _preview_cols if c in _filtered_df.columns]
+
+            _no_email_warn = "" if _t2_email_col else " — ⚠️ Aucune colonne email détectée"
+            st.markdown(f"""
+            <div class='section-card' style='margin-top:0.5rem;'>
+                <span style='color:#667eea;font-weight:700;font-size:1.1rem;'>👥 {len(_filtered_df)} clients</span>
+                <span style='color:#94A3B8;'> correspondent aux filtres sélectionnés{_no_email_warn}</span>
             </div>
             """, unsafe_allow_html=True)
 
+            if not _filtered_df.empty and _preview_cols:
+                with st.expander(f"👁️ Aperçu des {min(len(_filtered_df), 10)} premiers clients filtrés"):
+                    st.dataframe(
+                        _filtered_df[_preview_cols].head(10).rename(
+                            columns={'ChurnProba': 'Score', 'RiskLevel': 'Niveau'}
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
             st.markdown("---")
-            st.markdown("#### 📨 Formulaire d'envoi")
+            st.markdown("#### 📨 Composition de l'email groupé")
 
-            _t2_to      = st.text_input(
-                "📮 Adresse email du destinataire",
-                placeholder="client@exemple.com",
-                key="t2_to",
-            )
-            _t2_subject = st.text_input(
+            _t2g_subject = st.text_input(
                 "Objet de l'email",
-                value=f"Nous tenons à vous garder — Offre exclusive {user_company}",
-                key="t2_subject",
+                value=f"Un message important de {user_company}",
+                key="t2g_subject",
             )
 
-            if "crm_draft_relance" not in st.session_state:
-                st.session_state["crm_draft_relance"] = ""
+            if "crm_draft_groupe" not in st.session_state:
+                st.session_state["crm_draft_groupe"] = ""
 
-            if st.button("✨ Générer le texte avec l'IA", key="gen_relance", use_container_width=True):
-                with st.spinner("Gemini rédige votre email de rétention…"):
-                    _ctx = (
-                        f"Client du secteur {secteur}, ancienneté {tenure_disp}, "
-                        f"charges {charges_disp}, score de risque de résiliation {score_val*100:.0f}%. "
-                        f"L'objectif est de le fidéliser avec une offre personnalisée attractive."
+            if st.button("✨ Générer le texte avec l'IA", key="gen_groupe", use_container_width=True):
+                with st.spinner("Gemini rédige l'email de groupe…"):
+                    _ctx_group = (
+                        f"Secteur : {secteur}. Groupe cible : {len(_filtered_df)} clients "
+                        f"avec un score de risque entre {_risk_min}% et {_risk_max}%. "
+                        f"Ancienneté filtrée : {str(_ten_range) if _ten_range else 'toutes'}. "
+                        f"Objectif : fidéliser avec un message engageant. Entreprise : {user_company}."
                     )
-                    st.session_state["crm_draft_relance"] = gemini_draft_email(
-                        context=_ctx,
-                        email_type="relance de rétention personnalisée",
+                    st.session_state["crm_draft_groupe"] = gemini_draft_email(
+                        context=_ctx_group,
+                        email_type="relance groupée de rétention",
                     )
 
-            _t2_body = st.text_area(
+            _t2g_body = st.text_area(
                 "Corps de l'email (modifiable avant envoi)",
-                value=st.session_state.get("crm_draft_relance", ""),
+                value=st.session_state.get("crm_draft_groupe", ""),
                 height=300,
-                key="t2_body",
+                key="t2g_body",
                 placeholder="Cliquez sur '✨ Générer le texte avec l'IA' ou rédigez votre message ici…",
             )
 
-            if st.button("📤 Envoyer l'email de relance", type="primary", use_container_width=True, key="send_relance"):
-                if not _t2_to.strip():
-                    st.error("Veuillez renseigner l'adresse email du destinataire.")
-                elif not _t2_body.strip():
+            if st.button("📤 Envoyer à tous les clients filtrés", type="primary", use_container_width=True, key="send_groupe"):
+                if not _t2_email_col:
+                    st.error("⛔ Aucune colonne email détectée dans vos données.")
+                elif _filtered_df.empty:
+                    st.error("Aucun client ne correspond aux filtres sélectionnés.")
+                elif not _t2g_body.strip():
                     st.error("Le corps de l'email est vide.")
                 else:
-                    _html_body = "<p>" + _t2_body.replace("\n", "<br>") + "</p>"
-                    with st.spinner("Envoi en cours…"):
-                        _ok, _msg = send_campaign_email(_t2_to.strip(), _t2_subject, _html_body)
-                    if _ok:
-                        st.success(f"✅ Email envoyé à {_t2_to.strip()}")
-                        if "crm_history" not in st.session_state:
-                            st.session_state["crm_history"] = []
-                        st.session_state["crm_history"].append({
-                            "date":         datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "type":         "Relance Smart",
-                            "destinataire": _t2_to.strip(),
-                            "objet":        _t2_subject,
-                            "statut":       "✅ Envoyé",
-                        })
+                    _emails_groupe = [
+                        str(e).strip() for e in _filtered_df[_t2_email_col].dropna()
+                        if str(e).strip()
+                    ]
+                    if not _emails_groupe:
+                        st.error("Aucune adresse email valide dans le segment filtré.")
                     else:
-                        st.warning(f"⚠️ {_msg}")
+                        _html_body_g = "<p>" + _t2g_body.replace("\n", "<br>") + "</p>"
+                        _sent_g, _failed_g = 0, 0
+                        _prog_g = st.progress(0, text=f"Envoi 0 / {len(_emails_groupe)}…")
+                        for _idx_g, _addr_g in enumerate(_emails_groupe):
+                            _ok_g, _msg_g = send_campaign_email(_addr_g, _t2g_subject, _html_body_g)
+                            if _ok_g:
+                                _sent_g += 1
+                            else:
+                                _failed_g += 1
+                            _prog_g.progress(
+                                (_idx_g + 1) / len(_emails_groupe),
+                                text=f"Envoi {_idx_g + 1} / {len(_emails_groupe)} — {_addr_g}",
+                            )
+                        _prog_g.empty()
+                        if _sent_g > 0:
+                            st.success(f"✅ {_sent_g} email(s) envoyé(s) avec succès.")
+                            if "crm_history" not in st.session_state:
+                                st.session_state["crm_history"] = []
+                            st.session_state["crm_history"].append({
+                                "date":         datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "type":         "Relance Groupée",
+                                "destinataire": f"{_sent_g} client(s)",
+                                "objet":        _t2g_subject,
+                                "statut":       "✅ Envoyé" if _failed_g == 0 else f"⚠️ {_failed_g} échec(s)",
+                            })
+                        if _failed_g > 0:
+                            st.warning(f"⚠️ {_failed_g} envoi(s) échoué(s) — vérifiez BREVO_API_KEY et FROM_EMAIL dans .env")
 
     # ══════════════════════════════════════════════════════════════
     # TAB 3 — Occasions & Fêtes
     # ══════════════════════════════════════════════════════════════
     with tab3:
-        st.markdown("### 📢 Campagne Occasion — Envoi Groupé")
+        st.markdown("### 📢 Campagne Occasion — Envoi Groupé par Segment")
         st.caption("Envoyez un email de vœux ou de promotion à l'occasion d'un événement.")
 
         _OCCASIONS = [
@@ -1574,26 +1784,50 @@ elif section == "📧 Campagnes & Rapports":
         else:
             occasion_label = occasion_type
 
-        _t3_to = st.text_input(
-            "📮 Email(s) destinataire(s) — séparés par des virgules",
-            placeholder="contact1@exemple.com, contact2@exemple.com",
-            key="t3_to",
+        # Détection colonne email dans le DataFrame
+        _t3_email_col = next(
+            (c for c in df.columns
+             if any(kw in c.lower() for kw in ['email', 'mail', 'courriel'])),
+            None,
         )
+
+        # Extraction automatique des emails selon le segment sélectionné
+        if "élevé" in target_segment:
+            _t3_seg_df = df[df['ChurnProba'] > 0.6]
+        elif "modéré" in target_segment:
+            _t3_seg_df = df[(df['ChurnProba'] > 0.35) & (df['ChurnProba'] <= 0.6)]
+        elif "fidèles" in target_segment:
+            _t3_seg_df = df[df['ChurnProba'] <= 0.35]
+        else:
+            _t3_seg_df = df
+
+        n_segment = len(_t3_seg_df)
+
+        if _t3_email_col:
+            _t3_email_list = [
+                str(e).strip() for e in _t3_seg_df[_t3_email_col].dropna()
+                if str(e).strip()
+            ]
+        else:
+            _t3_email_list = []
+
+        # Affichage info segment + statut extraction
+        if _t3_email_col:
+            st.info(
+                f"📊 Segment : **{target_segment}** — {n_segment} clients · "
+                f"**{len(_t3_email_list)} emails** extraits automatiquement"
+            )
+        else:
+            st.warning(
+                "⚠️ Aucune colonne email détectée dans vos données. "
+                "Importez un fichier avec une colonne 'email' pour activer l'envoi automatique."
+            )
+
         _t3_subject = st.text_input(
             "Objet de l'email",
             value=f"{occasion_label} — {user_company}",
             key="t3_subject",
         )
-
-        # Compte du segment sélectionné
-        if "élevé" in target_segment:
-            n_segment = len(df[df['ChurnProba'] > 0.6])
-        elif "modéré" in target_segment:
-            n_segment = len(df[(df['ChurnProba'] > 0.35) & (df['ChurnProba'] <= 0.6)])
-        elif "fidèles" in target_segment:
-            n_segment = len(df[df['ChurnProba'] <= 0.35])
-        else:
-            n_segment = len(df)
 
         if "crm_draft_occasion" not in st.session_state:
             st.session_state["crm_draft_occasion"] = ""
@@ -1618,39 +1852,41 @@ elif section == "📧 Campagnes & Rapports":
             placeholder="Cliquez sur '✨ Générer le texte avec l'IA' ou rédigez votre message ici…",
         )
 
-        _col_seg_info, _col_send_btn = st.columns([2, 1])
-        with _col_seg_info:
-            st.info(f"📊 Segment : **{target_segment}** — {n_segment} clients concernés dans votre base")
-        with _col_send_btn:
-            if st.button("📤 Envoyer la campagne", type="primary", use_container_width=True, key="send_occasion"):
-                if not _t3_to.strip():
-                    st.error("Veuillez renseigner au moins un email destinataire.")
-                elif not _t3_body.strip():
-                    st.error("Le corps de l'email est vide.")
-                else:
-                    _recipients_list = [e.strip() for e in _t3_to.split(",") if e.strip()]
-                    _html_body       = "<p>" + _t3_body.replace("\n", "<br>") + "</p>"
-                    _sent, _failed   = 0, 0
-                    with st.spinner(f"Envoi à {len(_recipients_list)} destinataire(s)…"):
-                        for _addr in _recipients_list:
-                            _ok, _msg = send_campaign_email(_addr, _t3_subject, _html_body)
-                            if _ok:
-                                _sent += 1
-                            else:
-                                _failed += 1
-                    if _sent > 0:
-                        st.success(f"✅ {_sent} email(s) envoyé(s) avec succès.")
-                        if "crm_history" not in st.session_state:
-                            st.session_state["crm_history"] = []
-                        st.session_state["crm_history"].append({
-                            "date":         datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                            "type":         f"Campagne {occasion_label}",
-                            "destinataire": f"{_sent} destinataire(s)",
-                            "objet":        _t3_subject,
-                            "statut":       "✅ Envoyé" if _failed == 0 else f"⚠️ {_failed} échec(s)",
-                        })
-                    if _failed > 0:
-                        st.warning(f"⚠️ {_failed} envoi(s) échoué(s) — vérifiez BREVO_API_KEY et FROM_EMAIL dans .env")
+        if st.button("📤 Envoyer la campagne", type="primary", use_container_width=True, key="send_occasion"):
+            if not _t3_email_col:
+                st.error("⛔ Aucune colonne email détectée dans vos données.")
+            elif not _t3_email_list:
+                st.error("Aucune adresse email valide dans ce segment.")
+            elif not _t3_body.strip():
+                st.error("Le corps de l'email est vide.")
+            else:
+                _html_body     = "<p>" + _t3_body.replace("\n", "<br>") + "</p>"
+                _sent, _failed = 0, 0
+                _prog_t3 = st.progress(0, text=f"Envoi 0 / {len(_t3_email_list)}…")
+                for _idx_t3, _addr in enumerate(_t3_email_list):
+                    _ok, _msg = send_campaign_email(_addr, _t3_subject, _html_body)
+                    if _ok:
+                        _sent += 1
+                    else:
+                        _failed += 1
+                    _prog_t3.progress(
+                        (_idx_t3 + 1) / len(_t3_email_list),
+                        text=f"Envoi {_idx_t3 + 1} / {len(_t3_email_list)} — {_addr}",
+                    )
+                _prog_t3.empty()
+                if _sent > 0:
+                    st.success(f"✅ {_sent} email(s) envoyé(s) avec succès.")
+                    if "crm_history" not in st.session_state:
+                        st.session_state["crm_history"] = []
+                    st.session_state["crm_history"].append({
+                        "date":         datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        "type":         f"Campagne {occasion_label}",
+                        "destinataire": f"{_sent} destinataire(s)",
+                        "objet":        _t3_subject,
+                        "statut":       "✅ Envoyé" if _failed == 0 else f"⚠️ {_failed} échec(s)",
+                    })
+                if _failed > 0:
+                    st.warning(f"⚠️ {_failed} envoi(s) échoué(s) — vérifiez BREVO_API_KEY et FROM_EMAIL dans .env")
 
     # ══════════════════════════════════════════════════════════════
     # TAB 4 — Historique CRM

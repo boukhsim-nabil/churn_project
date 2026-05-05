@@ -50,6 +50,12 @@ GLOBAL_TARGET_SYNONYMS = [
     "churned", "inactif", "desinscription", "désinscription",
 ]
 
+# Colonnes CRM/PII — mises de côté avant XGBoost, réintégrées après prédiction
+CRM_COLUMN_SYNONYMS = [
+    "email", "mail", "courriel", "telephone", "phone", "tel", "mobile",
+    "nom", "prenom", "customerid", "client_id", "customer_id", "id_client",
+]
+
 def detect_columns(df, secteur):
     """
     Détecte automatiquement :
@@ -257,10 +263,11 @@ def quality_report(df_raw, df_clean, detection_report):
 # ═══════════════════════════════════════════════════════════════
 # ÉTAPE 4 — ENTRAÎNEMENT DU MODÈLE
 # ═══════════════════════════════════════════════════════════════
-def train_custom_model(df_clean, user_email):
+def train_custom_model(df_clean, user_email, crm_df=None):
     """
     Entraîne un modèle XGBoost sur les données nettoyées
-    et le sauvegarde pour cet utilisateur spécifiquement
+    et le sauvegarde pour cet utilisateur spécifiquement.
+    crm_df : colonnes PII/CRM à réintégrer dans le CSV sauvegardé (sans passer au modèle).
     """
     if "Churn" not in df_clean.columns:
         return None, None, "Colonne 'Churn' introuvable dans les données nettoyées."
@@ -312,7 +319,15 @@ def train_custom_model(df_clean, user_email):
     with open(model_path, "wb") as f:
         pickle.dump({"model": model, "features": list(X.columns)}, f)
 
-    df_clean.to_csv(data_path, index=False)
+    # Réintégrer les colonnes CRM dans le CSV sauvegardé (elles ne sont PAS des features ML)
+    if crm_df is not None and len(crm_df) == len(df_clean):
+        df_to_save = pd.concat(
+            [df_clean.reset_index(drop=True), crm_df.reset_index(drop=True)],
+            axis=1,
+        )
+    else:
+        df_to_save = df_clean
+    df_to_save.to_csv(data_path, index=False)
 
     return model, metrics, None
 
@@ -471,6 +486,10 @@ def show_pipeline_page(user_email, secteur):
     # Nettoyage des noms de colonnes (espaces parasites)
     df_raw.columns = df_raw.columns.str.strip()
 
+    # ── Le Douanier (PII) — extraire les colonnes CRM avant tout traitement ML ──
+    _crm_cols = [c for c in df_raw.columns if any(kw in c.lower() for kw in CRM_COLUMN_SYNONYMS)]
+    _crm_df = df_raw[_crm_cols].copy() if _crm_cols else None
+
     detection = detect_columns(df_raw, secteur)
 
     # Fallback interactif si aucune colonne cible détectée
@@ -509,6 +528,36 @@ def show_pipeline_page(user_email, secteur):
         for w in detection["warnings"]:
             st.warning(f"⚠️ {w}")
 
+    # ── Vérification CRM ────────────────────────────────────────────
+    _has_email_col = any(
+        any(kw in c.lower() for kw in ["email", "mail", "courriel"])
+        for c in df_raw.columns
+    )
+    if not _has_email_col:
+        st.warning(
+            "⚠️ Aucune colonne e-mail client détectée dans votre fichier. "
+            "Pour activer la relance personnalisée et la synchronisation CRM (Brevo), "
+            "ajoutez une colonne `email` ou `mail` à votre prochain import."
+        )
+
+    # ── Vérification Performance ML ─────────────────────────────────
+    _vital_ml_groups = {
+        "ancienneté client":   ["tenure", "anciennete_mois", "mois_inscrit", "mois_client", "ancienneté"],
+        "charges mensuelles":  ["monthlycharges", "abonnement_mensuel", "mrr", "panier_moyen", "charges_mensuelles"],
+        "type de contrat":     ["contract", "type_contrat", "contrat", "engagement"],
+        "tickets support":     ["numtechtickets", "tickets_support", "nb_tickets", "support_calls"],
+    }
+    _all_cols_lower = [c.lower() for c in df_raw.columns]
+    _missing_vital = [
+        label for label, syns in _vital_ml_groups.items()
+        if not any(s in _all_cols_lower for s in syns)
+    ]
+    if _missing_vital:
+        st.info(
+            f"💡 Pour des prédictions plus précises, enrichissez votre prochain CSV avec : "
+            f"**{', '.join(_missing_vital)}**."
+        )
+
     with st.expander("📋 Détail des colonnes détectées"):
         col1, col2 = st.columns(2)
         with col1:
@@ -530,6 +579,10 @@ def show_pipeline_page(user_email, secteur):
     st.subheader("🧹 Étape 3 — Nettoyage automatique")
 
     df_clean, cleaning_log = clean_data(df_raw, detection)
+
+    # Aligner crm_df sur les lignes conservées par clean_data (ex: suppression target NaN)
+    if _crm_df is not None:
+        _crm_df = _crm_df.loc[df_clean.index].reset_index(drop=True)
 
     for log in cleaning_log:
         st.write(f"  ✔️ {log}")
@@ -625,7 +678,7 @@ def show_pipeline_page(user_email, secteur):
 
     if st.button("🧠 Lancer l'entraînement du modèle", type="primary", use_container_width=True):
         with st.spinner("Entraînement en cours... Cela peut prendre quelques secondes."):
-            model, metrics, error = train_custom_model(df_clean, user_email)
+            model, metrics, error = train_custom_model(df_clean, user_email, crm_df=_crm_df)
 
         if error:
             st.error(f"❌ Erreur : {error}")
