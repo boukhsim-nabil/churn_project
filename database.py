@@ -4,7 +4,7 @@ database.py — Couche SQLite pour RetainIQ.
 Remplace users.json par une base de données SQLite légère.
 Appelé par auth.py. Ne dépend d'aucun autre module du projet.
 
-Rôles disponibles : 'admin', 'manager', 'conseiller'
+Rôles disponibles : 'super_admin', 'admin', 'manager', 'agent'
 """
 
 import sqlite3
@@ -14,7 +14,7 @@ from contextlib import contextmanager
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "retainiq.db")
 
-VALID_ROLES = ("admin", "manager", "conseiller")
+VALID_ROLES = ("super_admin", "admin", "manager", "agent")
 
 
 # ── Connexion ──────────────────────────────────────────────────────────────
@@ -49,14 +49,14 @@ def init_db():
                 hash_type      TEXT NOT NULL DEFAULT 'bcrypt',
                 company        TEXT NOT NULL DEFAULT '',
                 secteur        TEXT NOT NULL DEFAULT '',
-                role           TEXT NOT NULL DEFAULT 'conseiller',
+                role           TEXT NOT NULL DEFAULT 'agent',
                 created_at     TEXT NOT NULL
             )
         """)
         # Migration silencieuse : ajoute `role` aux DB existantes
         try:
             conn.execute(
-                "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'conseiller'"
+                "ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'agent'"
             )
         except Exception:
             pass  # colonne déjà présente
@@ -95,7 +95,7 @@ def create_user(
     company: str,
     secteur: str,
     hash_type: str = "bcrypt",
-    role: str = "conseiller",
+    role: str = "agent",
 ) -> None:
     """
     Insère un nouvel utilisateur.
@@ -159,7 +159,7 @@ def get_all_users() -> dict:
 
 def get_all_users_admin() -> list[dict]:
     """
-    Retourne tous les utilisateurs avec leur rôle — réservé au panneau Admin.
+    Retourne tous les utilisateurs avec leur rôle — réservé au super_admin.
 
     Returns:
         Liste de dicts : email, company, secteur, role, created_at
@@ -167,6 +167,24 @@ def get_all_users_admin() -> list[dict]:
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT email, company, secteur, role, created_at FROM users ORDER BY created_at"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_users_by_company(company: str) -> list[dict]:
+    """
+    Retourne uniquement les utilisateurs d'une entreprise — isolation Multi-Tenant.
+
+    Utilisé par admin et manager pour n'afficher que leur propre périmètre.
+
+    Returns:
+        Liste de dicts : email, company, secteur, role, created_at
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT email, company, secteur, role, created_at FROM users "
+            "WHERE company = ? ORDER BY created_at",
+            (company,),
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -197,9 +215,10 @@ def seed_default_users(hash_fn) -> None:
     Appelé au démarrage de l'app avec hash_fn = auth.hash_password.
     """
     defaults = [
-        ("admin@retainiq.com",      "Admin123!",      "RetainIQ",        "📱 Télécom",        "admin"),
-        ("manager@retainiq.com",    "Manager123!",    "RetainIQ",        "📱 Télécom",        "manager"),
-        ("conseiller@retainiq.com", "Conseiller123!", "RetainIQ",        "📱 Télécom",        "conseiller"),
+        ("super@retainiq.com",   "SuperAdmin123!", "RetainIQ", "📱 Télécom", "super_admin"),
+        ("admin@retainiq.com",   "Admin123!",      "RetainIQ", "📱 Télécom", "admin"),
+        ("manager@retainiq.com", "Manager123!",    "RetainIQ", "📱 Télécom", "manager"),
+        ("agent@retainiq.com",   "Agent123!",      "RetainIQ", "📱 Télécom", "agent"),
     ]
     for email, pwd, company, secteur, role in defaults:
         if not user_exists(email):

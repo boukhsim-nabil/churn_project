@@ -120,7 +120,7 @@ def segment_clients(df, secteur):
 
 
 # ── PAGE PRINCIPALE ───────────────────────────────────────────────────────────
-def show_loyalty_page(df, secteur, user_company, user_email: str = "", user_role: str = "conseiller"):
+def show_loyalty_page(df, secteur, user_company, user_email: str = "", user_role: str = "agent"):
     from data_pipeline import triage_risque
 
     st.markdown("""

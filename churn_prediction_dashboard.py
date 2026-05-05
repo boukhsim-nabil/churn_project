@@ -41,16 +41,18 @@ if not st.session_state.logged_in:
 # ── L'utilisateur est connecté — on récupère ses infos ──────────
 user_company = st.session_state.get("user_company", "Mon Entreprise")
 user_secteur = st.session_state.get("user_secteur", "📱 Télécom")
-user_role    = st.session_state.get("user_role",    "conseiller")
+user_role    = st.session_state.get("user_role",    "agent")
 
-# Helpers RBAC
-_is_manager_or_admin = user_role in ("manager", "admin")
-_is_admin            = user_role == "admin"
+# Helpers RBAC  (hiérarchie : super_admin > admin > manager > agent)
+_is_super_admin      = user_role == "super_admin"
+_is_admin            = user_role in ("admin", "super_admin")
+_is_manager_or_admin = user_role in ("manager", "admin", "super_admin")
 
 _ROLE_LABELS = {
-    "admin":      ("⚙️ Admin",      "#EF4444"),
-    "manager":    ("📊 Manager",    "#F59E0B"),
-    "conseiller": ("👤 Conseiller", "#10B981"),
+    "super_admin": ("🔮 Super Admin", "#8B5CF6"),
+    "admin":       ("⚙️ Admin",       "#EF4444"),
+    "manager":     ("📊 Manager",     "#F59E0B"),
+    "agent":       ("👤 Agent",       "#10B981"),
 }
 
 # ── Démarrage du scheduler (une seule fois par processus) ────────
@@ -173,7 +175,8 @@ SECTEUR_CONFIG = {
     "🎓 EdTech":         {"tenure": "Mois inscrit",       "charges": "Abonnement (€/mois)",  "churn_label": "Désinscription"},
     "☁️ SaaS B2B":       {"tenure": "Mois client",        "charges": "MRR (€)",              "churn_label": "Résiliation"},
 }
-cfg = SECTEUR_CONFIG[secteur]
+_DEFAULT_CFG = {"tenure": "Mois client", "charges": "Montant mensuel (€)", "churn_label": "Résiliation"}
+cfg = SECTEUR_CONFIG.get(secteur, _DEFAULT_CFG)
 
 st.sidebar.markdown("---")
 
@@ -201,15 +204,13 @@ _pages_manager = [
     "🧠 Explainable AI",
     "📧 Campagnes & Rapports",
 ]
-# Page réservée Admin uniquement
+# Page réservée Manager + Admin
 _pages_admin = ["⚙️ Panneau Admin"]
 
 if not has_model:
-    # Blank Slate : accès limité selon le rôle
-    _blank_pages = ["🏠 Bienvenue"]
+    # Blank Slate : tous les utilisateurs peuvent importer leurs données
+    _blank_pages = ["🏠 Bienvenue", "📤 Importer mes données"]
     if _is_manager_or_admin:
-        _blank_pages.append("📤 Importer mes données")
-    if _is_admin:
         _blank_pages.append("⚙️ Panneau Admin")
 
     st.sidebar.markdown("""
@@ -221,24 +222,25 @@ if not has_model:
     </div>
     """, unsafe_allow_html=True)
 
-    nav_demandee = st.session_state.get("_nav_override", "🏠 Bienvenue")
-    _blank_default = _blank_pages.index(nav_demandee) if nav_demandee in _blank_pages else 0
-    st.session_state.pop("_nav_override", None)
+    # Redirection programmatique : on écrit directement dans la clé du widget
+    # car Streamlit ignore index= si le widget a déjà un état en session_state.
+    nav_demandee = st.session_state.pop("_nav_override", None)
+    if nav_demandee and nav_demandee in _blank_pages:
+        st.session_state["_blank_nav_radio"] = nav_demandee
 
-    section = st.sidebar.radio("🎯 Navigation", _blank_pages, index=_blank_default)
+    section = st.sidebar.radio("🎯 Navigation", _blank_pages, key="_blank_nav_radio")
 else:
     # Menu complet filtré par rôle
     _full_pages = list(_pages_all)
     if _is_manager_or_admin:
         _full_pages += _pages_manager
-    if _is_admin:
         _full_pages += _pages_admin
 
     section = st.sidebar.radio("🎯 Navigation", _full_pages)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"<div class='secteur-badge'>Secteur : {secteur}</div>", unsafe_allow_html=True)
-_role_label, _role_color = _ROLE_LABELS.get(user_role, ("👤 Conseiller", "#10B981"))
+_role_label, _role_color = _ROLE_LABELS.get(user_role, ("👤 Agent", "#10B981"))
 st.sidebar.markdown(f"""
 <div style='background:#1a1d2e;border:1px solid #2d3748;
             border-radius:8px;padding:12px;margin-bottom:10px;'>
@@ -1942,11 +1944,14 @@ elif section == "🏆 Programme de Fidélité":
 
 elif section == "⚙️ Panneau Admin":
     # ── Garde de sécurité côté serveur ──────────────────────────
-    if not _is_admin:
-        st.error("⛔ Accès refusé — réservé aux administrateurs.")
+    if not _is_manager_or_admin:
+        st.error("⛔ Accès refusé — réservé aux managers et administrateurs.")
         st.stop()
 
-    from database import get_all_users_admin, update_user_role, delete_user, VALID_ROLES
+    from database import (
+        get_all_users_admin, get_users_by_company,
+        update_user_role, delete_user, VALID_ROLES,
+    )
     from auth import register_user
 
     st.markdown("""
@@ -1958,10 +1963,29 @@ elif section == "⚙️ Panneau Admin":
 
     # ── Tableau des utilisateurs ─────────────────────────────────
     st.markdown("### 👥 Utilisateurs enregistrés")
-    all_users = get_all_users_admin()
 
-    _ROLE_COLORS_HEX = {"admin": "#EF4444", "manager": "#F59E0B", "conseiller": "#10B981"}
-    _ROLE_ICONS       = {"admin": "⚙️", "manager": "📊", "conseiller": "👤"}
+    # Étanchéité Multi-Tenant : super_admin voit tout, les autres voient uniquement leur entreprise
+    if _is_super_admin:
+        all_users = get_all_users_admin()
+    else:
+        all_users = get_users_by_company(user_company)
+
+    _ROLE_COLORS_HEX = {
+        "super_admin": "#8B5CF6",
+        "admin":       "#EF4444",
+        "manager":     "#F59E0B",
+        "agent":       "#10B981",
+    }
+    _ROLE_ICONS = {
+        "super_admin": "🔮",
+        "admin":       "⚙️",
+        "manager":     "📊",
+        "agent":       "👤",
+    }
+
+    # Options de rôle affichables selon le rang de l'utilisateur connecté
+    # Un non-super_admin ne peut ni voir ni attribuer le rôle super_admin
+    _assignable_roles = list(VALID_ROLES) if _is_super_admin else [r for r in VALID_ROLES if r != "super_admin"]
 
     for u in all_users:
         rc = _ROLE_COLORS_HEX.get(u["role"], "#888")
@@ -1975,18 +1999,25 @@ elif section == "⚙️ Panneau Admin":
                 <span style='color:#888;font-size:0.8rem;'>{u['company']} · {u['secteur']}</span>
             </div>""", unsafe_allow_html=True)
         with col_role:
+            # Si le rôle actuel de l'utilisateur n'est pas dans les options (ex: super_admin vu par un admin),
+            # on le force sur le dernier rôle de la liste pour éviter une IndexError.
+            _cur_role = u["role"] if u["role"] in _assignable_roles else _assignable_roles[-1]
             new_role = st.selectbox(
                 "Rôle",
-                options=list(VALID_ROLES),
-                index=list(VALID_ROLES).index(u["role"]) if u["role"] in VALID_ROLES else 2,
+                options=_assignable_roles,
+                index=_assignable_roles.index(_cur_role),
                 key=f"role_{u['email']}",
                 label_visibility="collapsed",
             )
             if new_role != u["role"]:
                 if st.button("💾 Sauvegarder", key=f"save_{u['email']}", use_container_width=True):
-                    update_user_role(u["email"], new_role)
-                    st.success(f"Rôle de {u['email']} mis à jour → {new_role}")
-                    st.rerun()
+                    # Verrou serveur : seul un super_admin peut attribuer le rôle super_admin
+                    if new_role == "super_admin" and not _is_super_admin:
+                        st.error("⛔ Attribution du rôle super_admin interdite.")
+                    else:
+                        update_user_role(u["email"], new_role)
+                        st.success(f"Rôle de {u['email']} mis à jour → {new_role}")
+                        st.rerun()
         with col_del:
             if u["email"] != user_email:  # on ne peut pas se supprimer soi-même
                 if st.button("🗑️", key=f"del_{u['email']}", help=f"Supprimer {u['email']}"):
@@ -1998,49 +2029,59 @@ elif section == "⚙️ Panneau Admin":
                             unsafe_allow_html=True)
 
     st.markdown("---")
-
-    # ── Création d'un nouveau compte ─────────────────────────────
-    st.markdown("### ➕ Créer un nouveau compte")
-    with st.form("admin_create_user_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            new_email   = st.text_input("Email", placeholder="prenom.nom@entreprise.com")
-            new_company = st.text_input("Entreprise", placeholder="Ex: Orange, Fitness Park…")
-            new_pwd     = st.text_input("Mot de passe", type="password")
-        with c2:
-            new_secteur = st.selectbox("Secteur", [
-                "📱 Télécom", "💪 Salle de Sport",
-                "🛍️ E-commerce", "🎓 EdTech", "☁️ SaaS B2B",
-            ])
-            new_role    = st.selectbox("Rôle", ["conseiller", "manager", "admin"])
-            new_confirm = st.text_input("Confirmer le mot de passe", type="password")
-        submitted = st.form_submit_button("✅ Créer le compte", use_container_width=True, type="primary")
-
-    if submitted:
-        if not all([new_email, new_company, new_pwd, new_confirm]):
-            st.error("Tous les champs sont obligatoires.")
-        elif new_pwd != new_confirm:
-            st.error("Les mots de passe ne correspondent pas.")
-        elif len(new_pwd) < 6:
-            st.error("Le mot de passe doit contenir au moins 6 caractères.")
-        else:
-            ok, msg = register_user(new_email, new_pwd, new_company, new_secteur, role=new_role)
-            if ok:
-                st.success(f"✅ Compte créé : {new_email} ({new_role})")
-                st.rerun()
-            else:
-                st.error(msg)
-
-    st.markdown("---")
-    st.markdown("### 📋 Comptes de démonstration")
-    st.info("""
+    if _is_super_admin:
+        st.markdown("### 📋 Comptes de démonstration")
+        st.info("""
     **Comptes pré-créés pour tester le RBAC :**\n
     | Email | Mot de passe | Rôle |
     |---|---|---|
+    | super@retainiq.com | SuperAdmin123! | Super Admin |
     | admin@retainiq.com | Admin123! | Admin |
     | manager@retainiq.com | Manager123! | Manager |
-    | conseiller@retainiq.com | Conseiller123! | Conseiller |
+    | agent@retainiq.com | Agent123! | Agent |
     """)
+
+    st.markdown("---")
+
+    # ── Gestion de l'équipe (Manager, Admin, Super Admin) ────────
+    with st.expander("👥 Gestion de l'équipe", expanded=False):
+        if _is_super_admin:
+            st.markdown("Créez un compte **admin**, **manager** ou **agent**.")
+        elif _is_admin:
+            st.markdown("Créez un compte **manager** ou **agent** pour votre entreprise.")
+        else:
+            st.markdown("Créez un compte **agent** pour votre équipe.")
+        with st.form("team_create_agent_form"):
+            ta1, ta2 = st.columns(2)
+            with ta1:
+                agent_email = st.text_input("Email du collaborateur", placeholder="prenom.nom@entreprise.com")
+                agent_pwd   = st.text_input("Mot de passe", type="password", key="agent_pwd")
+            with ta2:
+                if _is_super_admin:
+                    # Le super_admin peut créer jusqu'au niveau admin, jamais super_admin
+                    agent_role = st.selectbox("Rôle", ["agent", "manager", "admin"], key="agent_role_sel")
+                elif _is_admin:
+                    agent_role = st.selectbox("Rôle", ["agent", "manager"], key="agent_role_sel")
+                else:
+                    # Manager : choix forcé sur agent, aucune option affichée
+                    agent_role = "agent"
+                agent_confirm = st.text_input("Confirmer le mot de passe", type="password", key="agent_confirm")
+            agent_submitted = st.form_submit_button("✅ Créer le compte", use_container_width=True, type="primary")
+
+        if agent_submitted:
+            if not all([agent_email, agent_pwd, agent_confirm]):
+                st.error("Tous les champs sont obligatoires.")
+            elif agent_pwd != agent_confirm:
+                st.error("Les mots de passe ne correspondent pas.")
+            elif len(agent_pwd) < 6:
+                st.error("Le mot de passe doit contenir au moins 6 caractères.")
+            else:
+                ok, msg = register_user(agent_email, agent_pwd, user_company, user_secteur, role=agent_role)
+                if ok:
+                    st.success(f"✅ Compte {agent_role} créé : {agent_email} (entreprise : {user_company})")
+                    st.rerun()
+                else:
+                    st.error(msg)
 
 # ══════════════════════════════════════════════════════════════════
 # FOOTER

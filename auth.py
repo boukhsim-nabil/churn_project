@@ -59,7 +59,7 @@ seed_default_users(hash_password)
 
 # ── Inscription ────────────────────────────────────────────────────────────
 def register_user(email: str, password: str, company: str, secteur: str,
-                  role: str = "conseiller"):
+                  role: str = "admin"):
     """
     Crée un nouveau compte avec un hash bcrypt.
 
@@ -105,7 +105,7 @@ def login_user(email: str, password: str):
     return True, {
         "company":    user["company"],
         "secteur":    user["secteur"],
-        "role":       user.get("role", "conseiller"),
+        "role":       user.get("role", "agent"),
         "created_at": user["created_at"],
     }
 
@@ -143,7 +143,7 @@ def show_auth_page():
                     st.session_state.user_email   = email
                     st.session_state.user_company = result["company"]
                     st.session_state.user_secteur = result["secteur"]
-                    st.session_state.user_role    = result.get("role", "conseiller")
+                    st.session_state.user_role    = result.get("role", "agent")
                     st.success("Connexion réussie !")
                     st.rerun()
                 else:
@@ -153,16 +153,13 @@ def show_auth_page():
         with st.form("register_form"):
             company   = st.text_input("Nom de votre entreprise", placeholder="Ex: Orange, Fitness Park...")
             email2    = st.text_input("Email professionnel",     placeholder="votre@email.com")
-            secteur   = st.selectbox("Secteur d'activité", [
-                "📱 Télécom", "💪 Salle de Sport",
-                "🛍️ E-commerce", "🎓 EdTech", "☁️ SaaS B2B"
-            ])
+            secteur   = st.text_input("Secteur d'activité", placeholder="Ex: Assurance, Logistique...")
             password2 = st.text_input("Mot de passe",            type="password", key="reg_pwd")
             confirm   = st.text_input("Confirmer le mot de passe", type="password")
             submit2   = st.form_submit_button("Créer mon compte", use_container_width=True)
 
         if submit2:
-            if not all([company, email2, password2, confirm]):
+            if not all([company, email2, secteur, password2, confirm]):
                 st.error("Veuillez remplir tous les champs.")
             elif password2 != confirm:
                 st.error("Les mots de passe ne correspondent pas.")
