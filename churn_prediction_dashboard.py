@@ -20,7 +20,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from data_pipeline import show_pipeline_page, load_user_model, triage_risque
+from data_pipeline import show_pipeline_page, load_user_model, load_tenant_model, triage_risque, _sanitize_company, TENANT_DATA_DIR
 from shap_explainer import show_shap_page
 from email_reports import generate_pdf_report, send_pdf_via_sendgrid
 from email_service import send_campaign_email
@@ -185,6 +185,11 @@ import os
 user_email = st.session_state.get("user_email", "")
 _email_safe = user_email.replace("@", "_at_").replace(".", "_")
 has_model = os.path.exists(f"model_{_email_safe}.pkl")
+# Agents sans modèle personnel : déverrouiller la navigation si le modèle
+# partagé de l'entreprise existe déjà (chargé plus bas par load_tenant_model).
+if not has_model and user_company:
+    _company_safe = _sanitize_company(user_company)
+    has_model = os.path.exists(os.path.join(TENANT_DATA_DIR, f"{_company_safe}_model.pkl"))
 
 # ── MENU DE NAVIGATION RBAC ─────────────────────────────────────
 # Pages accessibles à tous les rôles
@@ -329,6 +334,16 @@ has_model   = os.path.exists(f"model_{_email_safe}.pkl")"""
 
 # Charger le modèle custom si disponible
 custom_model, custom_features, custom_df = load_user_model(user_email)
+_tenant_fallback = False
+
+if custom_model is None:
+    # Fallback : modèle partagé de l'entreprise (chargé par un admin/manager)
+    custom_model, custom_features, custom_df, _tenant_metrics = load_tenant_model(user_company)
+    _tenant_fallback = custom_model is not None
+    if _tenant_fallback:
+        st.session_state["custom_model_trained"] = True
+        if _tenant_metrics is not None:
+            st.session_state["custom_model_metrics"] = _tenant_metrics
 
 if custom_model is not None and custom_features is not None and custom_df is not None:
     model = custom_model
@@ -342,7 +357,10 @@ if custom_model is not None and custom_features is not None and custom_df is not
         df['RiskLevel'] = df['ChurnProba'].apply(
             lambda x: "🔴 Risque Élevé" if x > 0.6 else ("🟡 Risque Modéré" if x > 0.35 else "🟢 Risque Faible")
         )
-    st.sidebar.success("✅ Modèle personnalisé actif")
+    if _tenant_fallback:
+        st.sidebar.info("📂 Données entreprise chargées automatiquement")
+    else:
+        st.sidebar.success("✅ Modèle personnalisé actif")
 else:
     if not has_model:
         st.sidebar.warning("⚠️ Aucun modèle importé")

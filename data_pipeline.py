@@ -4,10 +4,21 @@ import streamlit as st
 import json
 import os
 import pickle
+import re
+import shutil
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from xgboost import XGBClassifier
+
+TENANT_DATA_DIR = "tenant_data"
+
+def _sanitize_company(name: str) -> str:
+    """Converts a company name to a safe, lowercase filename component."""
+    name = name.lower().strip()
+    name = re.sub(r"[^\w]", "_", name)
+    name = re.sub(r"_+", "_", name).strip("_")
+    return name or "default"
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURATION PAR SECTEUR
@@ -317,7 +328,7 @@ def train_custom_model(df_clean, user_email, crm_df=None):
     data_path   = f"data_{safe_email}.csv"
 
     with open(model_path, "wb") as f:
-        pickle.dump({"model": model, "features": list(X.columns)}, f)
+        pickle.dump({"model": model, "features": list(X.columns), "metrics": metrics}, f)
 
     # Réintégrer les colonnes CRM dans le CSV sauvegardé (elles ne sont PAS des features ML)
     if crm_df is not None and len(crm_df) == len(df_clean):
@@ -354,6 +365,31 @@ def load_user_model(user_email):
     df       = pd.read_csv(data_path) if os.path.exists(data_path) else None
 
     return model, features, df
+
+# ═══════════════════════════════════════════════════════════════
+# CHARGEMENT DU MODÈLE PARTAGÉ (NIVEAU ENTREPRISE / TENANT)
+# ═══════════════════════════════════════════════════════════════
+def load_tenant_model(user_company: str):
+    """
+    Charge le modèle et les données partagés au niveau de l'entreprise.
+    Fallback utilisé quand un agent n'a pas encore de modèle personnel.
+    Retourne (model, features, df) ou (None, None, None).
+    """
+    if not user_company:
+        return None, None, None, None
+    company_safe = _sanitize_company(user_company)
+    model_path = os.path.join(TENANT_DATA_DIR, f"{company_safe}_model.pkl")
+    data_path  = os.path.join(TENANT_DATA_DIR, f"{company_safe}_processed.csv")
+    if not os.path.exists(model_path):
+        return None, None, None, None
+    with open(model_path, "rb") as f:
+        saved = pickle.load(f)
+    model    = saved["model"]
+    features = saved["features"]
+    metrics  = saved.get("metrics", None)
+    df       = pd.read_csv(data_path) if os.path.exists(data_path) else None
+    return model, features, df, metrics
+
 
 # ═══════════════════════════════════════════════════════════════
 # MOTEUR DE TRIAGE STATISTIQUE (agnostique au secteur)
@@ -448,26 +484,52 @@ def show_pipeline_page(user_email, secteur):
         help="Le fichier doit contenir une colonne de churn (Oui/Non ou 1/0) et des colonnes client."
     )
 
-    if not uploaded_file:
-        # Montrer un exemple de format
-        st.markdown("#### Exemple de format accepté")
-        example_data = {
-            "tenure":         [12, 3, 48, 7, 36],
-            "MonthlyCharges": [65.5, 89.0, 45.0, 92.0, 55.0],
-            "TotalCharges":   [786, 267, 2160, 644, 1980],
-            "Contract":       ["Month-to-month", "Month-to-month", "Two year", "Month-to-month", "One year"],
-            "Churn":          ["No", "Yes", "No", "Yes", "No"],
-        }
-        st.dataframe(pd.DataFrame(example_data), use_container_width=True, hide_index=True)
-        st.caption("Votre colonne cible peut s'appeler : Churn, churn, resiliation, depart, inactif...")
-        return
+    # ── Chemin CSV partagé du tenant ─────────────────────────────
+    _user_company = st.session_state.get("user_company", "")
+    _tenant_csv_path = None
+    if _user_company:
+        _company_safe = _sanitize_company(_user_company)
+        _tenant_csv_path = os.path.join(TENANT_DATA_DIR, f"{_company_safe}_data.csv")
 
-    # ── LECTURE DU FICHIER ───────────────────────────────────────
-    try:
-        df_raw = pd.read_csv(uploaded_file)
-    except Exception as e:
-        st.error(f"Erreur de lecture du fichier : {e}")
-        return
+    if not uploaded_file:
+        if _tenant_csv_path and os.path.exists(_tenant_csv_path):
+            # Rechargement automatique du CSV brut partagé (admin/manager → agent)
+            st.info("📂 Données entreprise chargées automatiquement depuis le serveur.")
+            try:
+                df_raw = pd.read_csv(_tenant_csv_path)
+            except Exception as e:
+                st.error(f"Erreur de lecture du fichier entreprise : {e}")
+                return
+        else:
+            # Montrer un exemple de format
+            st.markdown("#### Exemple de format accepté")
+            example_data = {
+                "tenure":         [12, 3, 48, 7, 36],
+                "MonthlyCharges": [65.5, 89.0, 45.0, 92.0, 55.0],
+                "TotalCharges":   [786, 267, 2160, 644, 1980],
+                "Contract":       ["Month-to-month", "Month-to-month", "Two year", "Month-to-month", "One year"],
+                "Churn":          ["No", "Yes", "No", "Yes", "No"],
+            }
+            st.dataframe(pd.DataFrame(example_data), use_container_width=True, hide_index=True)
+            st.caption("Votre colonne cible peut s'appeler : Churn, churn, resiliation, depart, inactif...")
+            return
+    else:
+        # ── LECTURE DU FICHIER ──────────────────────────────────
+        try:
+            df_raw = pd.read_csv(uploaded_file)
+        except Exception as e:
+            st.error(f"Erreur de lecture du fichier : {e}")
+            return
+
+        # Nouveau fichier déposé → réinitialiser le statut d'entraînement pour que
+        # le bouton s'affiche toujours, même si un modèle précédent existait en session.
+        st.session_state["custom_model_trained"] = False
+        st.session_state.pop("custom_model_metrics", None)
+
+        # Sauvegarde physique partagée pour tout le tenant (entreprise)
+        if _user_company and _tenant_csv_path:
+            os.makedirs(TENANT_DATA_DIR, exist_ok=True)
+            df_raw.to_csv(_tenant_csv_path, index=False)
 
     st.success(f"✅ Fichier chargé : **{len(df_raw)} lignes** · **{len(df_raw.columns)} colonnes**")
 
@@ -674,6 +736,20 @@ def show_pipeline_page(user_email, secteur):
         st.error("❌ La qualité des données est insuffisante (score < 30). Corrigez les problèmes avant d'entraîner.")
         return
 
+    # Bypass uniquement si le modèle est actif ET qu'aucun nouveau CSV n'a été déposé.
+    # Si l'utilisateur a uploadé un nouveau fichier, on doit toujours proposer le bouton
+    # d'entraînement, quelle que soit la session state (scénario Admin/Manager → nouveau CSV).
+    if st.session_state.get("custom_model_trained") and not uploaded_file:
+        st.success("✅ Modèle de l'entreprise déjà entraîné et actif — aucune action requise.")
+        _m = st.session_state.get("custom_model_metrics")
+        if _m:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Accuracy", f"{_m['accuracy']}%")
+            c2.metric("F1-Score", f"{_m['f1_score']}%")
+            c3.metric("AUC-ROC",  f"{_m['auc_roc']}%")
+            st.caption(f"Entraîné sur {_m['n_train']} clients · Testé sur {_m['n_test']} clients · {len(_m['features'])} features")
+        return
+
     st.info(f"Le modèle XGBoost va être entraîné sur **{len(df_clean)} clients** avec **{len(df_clean.columns)-1} features**.")
 
     if st.button("🧠 Lancer l'entraînement du modèle", type="primary", use_container_width=True):
@@ -717,3 +793,14 @@ def show_pipeline_page(user_email, secteur):
         # Sauvegarder le statut dans la session
         st.session_state["custom_model_trained"] = True
         st.session_state["custom_model_metrics"]  = metrics
+
+        # Propager modèle + données au niveau tenant pour partage entre utilisateurs
+        _user_company = st.session_state.get("user_company", "")
+        if _user_company:
+            _safe_email   = user_email.replace("@", "_at_").replace(".", "_")
+            _company_safe = _sanitize_company(_user_company)
+            os.makedirs(TENANT_DATA_DIR, exist_ok=True)
+            shutil.copy2(f"model_{_safe_email}.pkl",
+                         os.path.join(TENANT_DATA_DIR, f"{_company_safe}_model.pkl"))
+            shutil.copy2(f"data_{_safe_email}.csv",
+                         os.path.join(TENANT_DATA_DIR, f"{_company_safe}_processed.csv"))
