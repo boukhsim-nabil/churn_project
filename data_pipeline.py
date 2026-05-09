@@ -108,20 +108,42 @@ def detect_columns(df, secteur):
                     )
                     break
 
+    # Mots-clés ignorés — liste unifiée avec CRM_COLUMN_SYNONYMS
+    _ignore_keywords = [
+        "id", "date", "nom", "name", "email", "mail", "courriel",
+        "phone", "tel", "mobile", "telephone", "prenom",
+    ]
+
     # Classifier les autres colonnes
     for col in df.columns:
         if col == report["target_col"]:
             continue
 
-        # Colonnes à ignorer (ID, dates, texte libre)
-        if any(kw in col.lower() for kw in ["id", "date", "nom", "name", "email", "phone", "tel"]):
+        # Colonnes à ignorer (ID, dates, PII/CRM)
+        if any(kw in col.lower() for kw in _ignore_keywords):
             report["ignored_cols"].append(col)
             continue
 
-        if df[col].dtype in ["int64", "float64"]:
+        dtype = df[col].dtype
+
+        if pd.api.types.is_numeric_dtype(dtype):
+            # int64, float64, int32, uint8, etc.
             report["numeric_cols"].append(col)
-        elif df[col].dtype == "object":
-            if df[col].nunique() <= 20:
+        elif dtype == "object":
+            # Tentative de conversion numérique (ex: "64.5", " 100 ", "1,234")
+            _coerced = pd.to_numeric(
+                df[col].astype(str).str.strip().str.replace(",", ".", regex=False),
+                errors="coerce",
+            )
+            _coerce_rate = _coerced.notna().sum() / max(df[col].notna().sum(), 1)
+            if _coerce_rate >= 0.8:
+                # Colonne numérique stockée en texte — sera convertie dans clean_data
+                report["numeric_cols"].append(col)
+                report["warnings"].append(
+                    f"'{col}' : valeurs texte converties automatiquement en numérique "
+                    f"({_coerce_rate*100:.0f}% de conversions réussies)."
+                )
+            elif df[col].nunique() <= 20:
                 report["categorical_cols"].append(col)
             else:
                 report["ignored_cols"].append(col)
@@ -160,6 +182,13 @@ def clean_data(df, detection_report):
     for col in numeric_cols:
         if col not in df_clean.columns:
             continue
+        # Gérer les colonnes numériques stockées en texte (ex: "64.5", " 100 ")
+        if df_clean[col].dtype == "object":
+            df_clean[col] = (
+                df_clean[col].astype(str)
+                .str.strip()
+                .str.replace(",", ".", regex=False)
+            )
         df_clean[col] = pd.to_numeric(df_clean[col], errors="coerce")
         n_missing = df_clean[col].isna().sum()
         if n_missing > 0:
@@ -242,9 +271,16 @@ def quality_report(df_raw, df_clean, detection_report):
             report["issues"].append("Taux de churn très faible (<5%) — données peut-être déséquilibrées")
             report["recommendations"].append("Utiliser SMOTE ou class_weight pour rééquilibrer les classes")
             report["score"] -= 20
-        elif churn_rate > 60:
-            report["issues"].append("Taux de churn élevé (>60%) — vérifiez vos données")
-            report["score"] -= 15
+        elif churn_rate > 50:
+            report["issues"].append(
+                f"Taux de churn anormalement élevé ({churn_rate:.1f}%) — "
+                "vérifiez que votre colonne cible est bien encodée : 1 = client parti, 0 = client actif. "
+                "Si c'est l'inverse, les prédictions seront complètement inversées."
+            )
+            report["recommendations"].append(
+                "Vérifier l'encodage : dans votre CSV, la valeur 1 doit représenter un client CHURNÉ, pas un client actif."
+            )
+            report["score"] -= 20
 
     # Valeurs manquantes
     if report["pct_missing"] > 20:
@@ -274,7 +310,7 @@ def quality_report(df_raw, df_clean, detection_report):
 # ═══════════════════════════════════════════════════════════════
 # ÉTAPE 4 — ENTRAÎNEMENT DU MODÈLE
 # ═══════════════════════════════════════════════════════════════
-def train_custom_model(df_clean, user_email, crm_df=None):
+def train_custom_model(df_clean, user_email, crm_df=None, detection_report=None):
     """
     Entraîne un modèle XGBoost sur les données nettoyées
     et le sauvegarde pour cet utilisateur spécifiquement.
@@ -290,9 +326,11 @@ def train_custom_model(df_clean, user_email, crm_df=None):
         return None, None, "Pas assez de données pour entraîner un modèle (minimum 50 lignes)."
 
     # Calcul du poids de classe pour gérer le déséquilibre
+    # Plafonné à 10 pour éviter un modèle trop agressif sur les datasets peu déséquilibrés
     n_neg = (y == 0).sum()
     n_pos = (y == 1).sum()
-    scale_pos_weight = n_neg / n_pos if n_pos > 0 else 1
+    raw_weight = n_neg / n_pos if n_pos > 0 else 1
+    scale_pos_weight = min(raw_weight, 10.0)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
@@ -327,8 +365,19 @@ def train_custom_model(df_clean, user_email, crm_df=None):
     model_path  = f"model_{safe_email}.pkl"
     data_path   = f"data_{safe_email}.csv"
 
+    _saved_payload = {
+        "model":    model,
+        "features": list(X.columns),
+        "metrics":  metrics,
+        # Métadonnées d'encodage : permettent de valider la cohérence train/predict
+        "scale_pos_weight": scale_pos_weight,
+        "churn_rate_train":  round(y.mean() * 100, 2),
+    }
+    if detection_report is not None:
+        _saved_payload["categorical_cols"] = detection_report.get("categorical_cols", [])
+        _saved_payload["numeric_cols"]     = detection_report.get("numeric_cols", [])
     with open(model_path, "wb") as f:
-        pickle.dump({"model": model, "features": list(X.columns), "metrics": metrics}, f)
+        pickle.dump(_saved_payload, f)
 
     # Réintégrer les colonnes CRM dans le CSV sauvegardé (elles ne sont PAS des features ML)
     if crm_df is not None and len(crm_df) == len(df_clean):
@@ -341,6 +390,20 @@ def train_custom_model(df_clean, user_email, crm_df=None):
     df_to_save.to_csv(data_path, index=False)
 
     return model, metrics, None
+
+# ═══════════════════════════════════════════════════════════════
+# ALIGNEMENT DES FEATURES AVANT PRÉDICTION
+# ═══════════════════════════════════════════════════════════════
+def prepare_features_for_prediction(df: pd.DataFrame, feature_names: list) -> pd.DataFrame:
+    """
+    Aligne un DataFrame aux features exactes du modèle entraîné.
+    - Colonnes manquantes → remplies avec 0 (valeur neutre/référence)
+    - Colonnes supplémentaires (CRM, etc.) → ignorées
+    - Ordre des colonnes → garanti identique à l'entraînement
+    Prévient tout désalignement silencieux entre train et predict.
+    """
+    return df.reindex(columns=feature_names, fill_value=0)
+
 
 # ═══════════════════════════════════════════════════════════════
 # CHARGEMENT DU MODÈLE PERSONNALISÉ
@@ -483,6 +546,35 @@ def show_pipeline_page(user_email, secteur):
         type=["csv"],
         help="Le fichier doit contenir une colonne de churn (Oui/Non ou 1/0) et des colonnes client."
     )
+
+    with st.expander("📋 Pré-requis et Format du Fichier CSV — cliquez pour afficher", expanded=False):
+        st.markdown('''
+Pour garantir des prédictions fiables et une analyse optimale, votre fichier doit strictement respecter les conditions suivantes :
+
+**1. Format Général**
+* **Extension :** Le fichier doit être au format `.csv` (séparateur virgule `,` ou point-virgule `;`).
+* **Volume :** Minimum 50 lignes requises (pour permettre à l'Intelligence Artificielle d'apprendre efficacement).
+
+**2. En-têtes et Colonnes Obligatoires**
+Votre fichier doit contenir **exactement ces 10 colonnes**, nommées ainsi (sensible à la casse) :
+* **Données Client (Ignorées par l'IA, utilisées pour le CRM) :**
+  * `client_id` : Identifiant unique (ex: C-1001).
+  * `nom` : Nom du client ou de l'entreprise.
+  * `email` : Adresse de contact.
+  * `telephone` : Numéro de contact.
+* **Données Comportementales (Analysées par l'IA) :**
+  * `anciennete_mois` : Nombre de mois depuis l'inscription (Chiffre entier).
+  * `type_engagement` : Doit contenir exactement "Sans engagement" ou "Engagement annuel".
+  * `pack_service` : Doit contenir exactement "Starter" ou "Premium".
+  * `prix_mensuel` : Montant payé (Chiffre avec point ou virgule pour les décimales).
+  * `tickets_reclamation` : Nombre de problèmes signalés (Chiffre entier, ex: 0, 1, 4).
+* **La Cible (Objectif d'apprentissage) :**
+  * `churn` : L'état actuel du client. Doit obligatoirement contenir **1** (Client parti/résilié) ou **0** (Client toujours actif).
+
+**3. Règles de Qualité des Données**
+* **Zéro valeur manquante :** Assurez-vous qu'aucune case n'est vide, en particulier dans la colonne `churn`.
+* **Cohérence de la cible :** Le taux de clients partis (`churn` = 1) ne doit pas être anormalement élevé (idéalement inférieur à 50%). Si votre fichier contient plus de clients partis qu'actifs, vérifiez que vous n'avez pas inversé les 0 et les 1 !
+''')
 
     # ── Chemin CSV partagé du tenant ─────────────────────────────
     _user_company = st.session_state.get("user_company", "")
@@ -754,7 +846,9 @@ def show_pipeline_page(user_email, secteur):
 
     if st.button("🧠 Lancer l'entraînement du modèle", type="primary", use_container_width=True):
         with st.spinner("Entraînement en cours... Cela peut prendre quelques secondes."):
-            model, metrics, error = train_custom_model(df_clean, user_email, crm_df=_crm_df)
+            model, metrics, error = train_custom_model(
+                df_clean, user_email, crm_df=_crm_df, detection_report=detection
+            )
 
         if error:
             st.error(f"❌ Erreur : {error}")

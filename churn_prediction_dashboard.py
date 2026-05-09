@@ -20,7 +20,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from data_pipeline import show_pipeline_page, load_user_model, load_tenant_model, triage_risque, _sanitize_company, TENANT_DATA_DIR
+from data_pipeline import (
+    show_pipeline_page, load_user_model, load_tenant_model,
+    triage_risque, _sanitize_company, TENANT_DATA_DIR,
+    prepare_features_for_prediction,
+)
 from shap_explainer import show_shap_page
 from email_reports import generate_pdf_report, send_pdf_via_sendgrid
 from email_service import send_campaign_email
@@ -29,6 +33,42 @@ from loyalty_page import show_loyalty_page
 import scheduler as sched
 
 warnings.filterwarnings('ignore')
+
+# ── Mapping catégoriel : selectboxes propres → colonnes dummifiées ──────────
+# Pour chaque variable catégorielle du dataset métier, on définit :
+#   label       : libellé affiché dans l'UI
+#   options     : valeurs humaines proposées dans le selectbox
+#   dummy_cols  : colonnes dummifiées réellement attendues par le modèle
+#   encoding    : pour chaque option, la liste de 0/1 à écrire dans dummy_cols
+CATEGORICAL_DUMMIES_MAP = {
+    "type_engagement": {
+        "label":      "Type d'engagement",
+        "options":    ["Engagement annuel", "Sans engagement"],
+        "dummy_cols": ["type_engagement_Sans engagement"],
+        "encoding": {
+            "Engagement annuel": [0],
+            "Sans engagement":   [1],
+        },
+    },
+    "pack_service": {
+        "label":      "Pack Service",
+        "options":    ["Starter", "Premium"],
+        "dummy_cols": ["pack_service_Starter"],
+        "encoding": {
+            "Starter": [1],
+            "Premium": [0],
+        },
+    },
+}
+
+def _get_active_cat_groups(feature_names: list) -> dict:
+    """Retourne les groupes catégoriels dont au moins une dummy col est présente dans feature_names."""
+    fn_set = set(feature_names)
+    return {
+        key: info
+        for key, info in CATEGORICAL_DUMMIES_MAP.items()
+        if any(col in fn_set for col in info["dummy_cols"])
+    }
 
 # ── Vérification de la session ──────────────────────────────────
 if "logged_in" not in st.session_state:
@@ -265,6 +305,7 @@ if st.sidebar.button("🚪 Se déconnecter", use_container_width=True):
     st.session_state.user_email = ""
     st.rerun()
 
+
 # ══════════════════════════════════════════════════════════════════
 # DONNÉES — identique à l'original
 # ══════════════════════════════════════════════════════════════════
@@ -326,11 +367,6 @@ def train_model(df):
     return model, X.columns, accuracy
 
 model, feature_names, model_accuracy = train_model(df)
-"""
-# ── Blank Slate : vérifier si le modèle utilisateur existe ───────
-user_email = st.session_state.get("user_email", "")
-_email_safe = user_email.replace("@", "_at_").replace(".", "_")
-has_model   = os.path.exists(f"model_{_email_safe}.pkl")"""
 
 # Charger le modèle custom si disponible
 custom_model, custom_features, custom_df = load_user_model(user_email)
@@ -350,15 +386,15 @@ if custom_model is not None and custom_features is not None and custom_df is not
     feature_names = custom_features
     df = custom_df.copy()
     if 'ChurnProba' not in df.columns:
-        # Utiliser uniquement les features ML (exclut les colonnes CRM réintégrées)
-        X_all_custom = df[custom_features]
+        # Alignement garanti : sélectionne exactement les features d'entraînement dans le bon ordre
+        X_all_custom = prepare_features_for_prediction(df, custom_features)
         df['ChurnProba'] = model.predict_proba(X_all_custom)[:, 1]
     if 'RiskLevel' not in df.columns:
         df['RiskLevel'] = df['ChurnProba'].apply(
             lambda x: "🔴 Risque Élevé" if x > 0.6 else ("🟡 Risque Modéré" if x > 0.35 else "🟢 Risque Faible")
         )
     if _tenant_fallback:
-        st.sidebar.info("📂 Données entreprise chargées automatiquement")
+        st.sidebar.success("✅ Modèle entreprise actif")
     else:
         st.sidebar.success("✅ Modèle personnalisé actif")
 else:
@@ -580,9 +616,6 @@ elif section == "🏠 Overview":
     st.markdown("""
     <div class="main-header">
         <h1 style='margin:0;font-size:3rem;color:white;'>🔮 RetainIQ — Churn Prediction</h1>
-        <p style='font-size:1.2rem;margin:10px 0 0 0;opacity:0.9;'>
-            Plateforme IA de Rétention Client — Projet Industriel 2024-2025
-        </p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -615,7 +648,7 @@ elif section == "🏠 Overview":
 
     sample_df      = df.head(10).copy()
     sample_features= sample_df.drop(['Churn', 'ChurnProba', 'RiskLevel'], axis=1, errors='ignore')
-    risk_scores    = model.predict_proba(sample_features[feature_names])[:, 1]
+    risk_scores    = model.predict_proba(prepare_features_for_prediction(sample_features, feature_names))[:, 1]
 
     _ov_tenure_col  = next((c for c in ['tenure', 'anciennete_mois', 'mois_inscrit', 'mois_client'] if c in sample_df.columns), None)
     _ov_charges_col = next((c for c in ['MonthlyCharges', 'abonnement_mensuel', 'mrr', 'panier_moyen'] if c in sample_df.columns), None)
@@ -752,74 +785,64 @@ elif section == "🔮 AI Prediction":
     """, unsafe_allow_html=True)
 
 
-    mode = st.radio("", ["🚀 Quick Prediction (Auto-fill with average values)", "✏️ Manual Input (Customize all features)"],
-                    horizontal=True)
+    cat_sel_mi = {}  # sélections catégorielles pour le mode Manual Input (datasets non-Telco)
 
     # Detect which columns are available for display/input
     _telco_cols = {'tenure', 'MonthlyCharges', 'TotalCharges'}
     _has_telco  = _telco_cols.issubset(set(feature_names))
 
-    if mode == "🚀 Quick Prediction (Auto-fill with average values)":
-        st.info("Using average values for all features. Click 'Predict' to see results.")
-        inputs = {}
-        for feature in feature_names:
-            inputs[feature] = 0 if df[feature].nunique() <= 2 else float(df[feature].median())
-        # Build a summary of the top 3 numeric features dynamically
-        _numeric_features = [f for f in feature_names if df[f].nunique() > 2]
-        _summary_items = "".join(
-            f"<li><b>{f}:</b> {inputs[f]:.2f}</li>" for f in _numeric_features[:3]
-        )
-        st.markdown(f"""
+    inputs = {}
+    if _has_telco:
+        # Original Telco fixed-field layout
+        st.markdown("""
         <div style="background:#34495E;padding:15px;border-radius:10px;margin:15px 0;">
-            <h4>ℹ️ Key Features Being Used:</h4>
-            <ul>{_summary_items}</ul>
-            <p>Other features are set to their median/modal values.</p>
+            <h4>💡 Tip:</h4>
+            <p>Focus on these key features for accurate predictions:</p>
+            <ul>
+                <li>Tenure (months with company)</li>
+                <li>Monthly/Total Charges</li>
+                <li>Contract Type</li>
+                <li>Internet Service</li>
+            </ul>
         </div>
         """, unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Basic Information")
+            inputs['tenure']         = st.slider("Tenure (months)", 1, 100, 24)
+            inputs['MonthlyCharges'] = st.slider("Monthly Charges ($)", float(df['MonthlyCharges'].min()), float(df['MonthlyCharges'].max()), 65.0)
+            inputs['TotalCharges']   = st.slider("Total Charges ($)", float(df['TotalCharges'].min()), float(df['TotalCharges'].max()), 2000.0)
+        with col2:
+            st.subheader("Service Information")
+            inputs['Contract']        = st.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"])
+            inputs['InternetService'] = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
+            inputs['OnlineSecurity']  = st.checkbox("Online Security")
+            inputs['TechSupport']     = st.checkbox("Tech Support")
     else:
-        inputs = {}
-        if _has_telco:
-            # Original Telco fixed-field layout
-            st.markdown("""
-            <div style="background:#34495E;padding:15px;border-radius:10px;margin:15px 0;">
-                <h4>💡 Tip:</h4>
-                <p>Focus on these key features for accurate predictions:</p>
-                <ul>
-                    <li>Tenure (months with company)</li>
-                    <li>Monthly/Total Charges</li>
-                    <li>Contract Type</li>
-                    <li>Internet Service</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Basic Information")
-                inputs['tenure']         = st.slider("Tenure (months)", 1, 100, 24)
-                inputs['MonthlyCharges'] = st.slider("Monthly Charges ($)", float(df['MonthlyCharges'].min()), float(df['MonthlyCharges'].max()), 65.0)
-                inputs['TotalCharges']   = st.slider("Total Charges ($)", float(df['TotalCharges'].min()), float(df['TotalCharges'].max()), 2000.0)
-            with col2:
-                st.subheader("Service Information")
-                inputs['Contract']        = st.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"])
-                inputs['InternetService'] = st.selectbox("Internet Service", ["DSL", "Fiber optic", "No"])
-                inputs['OnlineSecurity']  = st.checkbox("Online Security")
-                inputs['TechSupport']     = st.checkbox("Tech Support")
-        else:
-            # Dynamic layout for custom datasets
-            st.info("Adjust feature values to generate a prediction.")
-            col1, col2 = st.columns(2)
-            for i, feature in enumerate(feature_names):
-                with col1 if i % 2 == 0 else col2:
-                    if df[feature].nunique() <= 2:
-                        inputs[feature] = 1 if st.checkbox(feature) else 0
-                    else:
-                        _fmin  = float(df[feature].min())
-                        _fmax  = float(df[feature].max())
-                        _fmed  = float(df[feature].median())
-                        inputs[feature] = st.slider(feature, _fmin, _fmax, _fmed)
+        # Dynamic layout for custom datasets
+        st.info("Adjust feature values to generate a prediction.")
+        # Sélectboxes propres pour les variables catégorielles connues
+        _active_cat_groups_mi = _get_active_cat_groups(feature_names)
+        _dummy_cols_skip_mi   = {c for g in _active_cat_groups_mi.values() for c in g["dummy_cols"]}
+        for grp_key, grp_info in _active_cat_groups_mi.items():
+            cat_sel_mi[grp_key] = st.selectbox(
+                grp_info["label"], grp_info["options"], key=f"mi_cat_{grp_key}"
+            )
+        # Contrôles pour les autres features (dummy cols masquées)
+        col1, col2 = st.columns(2)
+        _non_cat_feats = [f for f in feature_names if f not in _dummy_cols_skip_mi]
+        for i, feature in enumerate(_non_cat_feats):
+            with col1 if i % 2 == 0 else col2:
+                if df[feature].nunique() <= 2:
+                    inputs[feature] = 1 if st.checkbox(feature) else 0
+                else:
+                    _fmin  = float(df[feature].min())
+                    _fmax  = float(df[feature].max())
+                    _fmed  = float(df[feature].median())
+                    inputs[feature] = st.slider(feature, _fmin, _fmax, _fmed)
 
     if st.button("🔮 Predict Churn Probability", use_container_width=True):
-        if mode.startswith("✏️") and _has_telco:
+        if _has_telco:
             inputs['Contract_One year']           = 1 if inputs['Contract'] == "One year" else 0
             inputs['Contract_Two year']           = 1 if inputs['Contract'] == "Two year" else 0
             inputs['Contract_One_year']           = inputs['Contract_One year']
@@ -831,10 +854,16 @@ elif section == "🔮 AI Prediction":
             inputs['TechSupport_Yes']             = 1 if inputs['TechSupport'] else 0
             for key in ['Contract', 'InternetService', 'OnlineSecurity', 'TechSupport']:
                 if key in inputs: del inputs[key]
+        else:
+            # Dataset custom : traduire les selectboxes catégorielles en colonnes dummifiées
+            for grp_key, selected_option in cat_sel_mi.items():
+                grp_info = CATEGORICAL_DUMMIES_MAP[grp_key]
+                for col, val in zip(grp_info["dummy_cols"], grp_info["encoding"][selected_option]):
+                    inputs[col] = val
 
         final_inputs = {feature: inputs.get(feature, 0) for feature in feature_names}
         input_df     = pd.DataFrame([final_inputs])
-        prediction   = model.predict_proba(input_df)[0][1]
+        prediction   = model.predict_proba(prepare_features_for_prediction(input_df, feature_names))[0][1]
 
         # Jauge visuelle (NOUVEAU)
         fig_g, lbl, col_g, css = risk_gauge(prediction)
@@ -905,8 +934,8 @@ elif section == "🌟 Future Scenarios":
 
         X_scenario    = df_scenario.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1, errors='ignore')
         X_current     = df.drop(["Churn", "ChurnProba", "RiskLevel"], axis=1, errors='ignore')
-        future_probas = model.predict_proba(X_scenario[feature_names])[:, 1]
-        current_probas= model.predict_proba(X_current[feature_names])[:, 1]
+        future_probas = model.predict_proba(prepare_features_for_prediction(X_scenario, feature_names))[:, 1]
+        current_probas= model.predict_proba(prepare_features_for_prediction(X_current,  feature_names))[:, 1]
 
         col1, col2 = st.columns(2)
         with col1:
@@ -969,6 +998,13 @@ elif section == "⚡ Simulateur What-If":
     # Pré-calculer les specs une seule fois
     _specs = {c: _whatsif_spec(c) for c in sim_features}
 
+    # Masquer les dummy cols des variables catégorielles connues → selectboxes propres
+    _active_cat_groups_wi = _get_active_cat_groups(feature_names)
+    _dummy_cols_skip_wi   = {c for g in _active_cat_groups_wi.values() for c in g["dummy_cols"]}
+    _sim_feats_filtered   = [f for f in sim_features if f not in _dummy_cols_skip_wi]
+
+    cat_sel_a_wi: dict = {}
+    cat_sel_b_wi: dict = {}
     inputs_a: dict = {}
     inputs_b: dict = {}
 
@@ -976,7 +1012,11 @@ elif section == "⚡ Simulateur What-If":
 
     with col1:
         st.subheader("📌 Situation ACTUELLE")
-        for feat in sim_features:
+        for grp_key, grp_info in _active_cat_groups_wi.items():
+            cat_sel_a_wi[grp_key] = st.selectbox(
+                grp_info["label"], grp_info["options"], key=f"wa_cat_{grp_key}"
+            )
+        for feat in _sim_feats_filtered:
             kind, params = _specs[feat]
             if kind == "constant":
                 inputs_a[feat] = params
@@ -997,7 +1037,11 @@ elif section == "⚡ Simulateur What-If":
 
     with col2:
         st.subheader("🎯 Situation APRÈS votre action")
-        for feat in sim_features:
+        for grp_key, grp_info in _active_cat_groups_wi.items():
+            cat_sel_b_wi[grp_key] = st.selectbox(
+                grp_info["label"], grp_info["options"], key=f"wb_cat_{grp_key}"
+            )
+        for feat in _sim_feats_filtered:
             kind, params = _specs[feat]
             if kind == "constant":
                 inputs_b[feat] = params
@@ -1018,12 +1062,22 @@ elif section == "⚡ Simulateur What-If":
                 else:
                     inputs_b[feat] = st.slider(feat, fmin, fmax, fmed, key=f"wb_{feat}")
 
+    # Expansion des sélections catégorielles en colonnes dummifiées attendues par le modèle
+    for grp_key, selected_option in cat_sel_a_wi.items():
+        grp_info = CATEGORICAL_DUMMIES_MAP[grp_key]
+        for col, val in zip(grp_info["dummy_cols"], grp_info["encoding"][selected_option]):
+            inputs_a[col] = val
+    for grp_key, selected_option in cat_sel_b_wi.items():
+        grp_info = CATEGORICAL_DUMMIES_MAP[grp_key]
+        for col, val in zip(grp_info["dummy_cols"], grp_info["encoding"][selected_option]):
+            inputs_b[col] = val
+
     # ── Construction des DataFrames de prédiction ───────────────────────────
     _row_a = {f: inputs_a.get(f, float(df[f].median()) if f in df.columns else 0) for f in feature_names}
     _row_b = {f: inputs_b.get(f, float(df[f].median()) if f in df.columns else 0) for f in feature_names}
 
-    score_a = model.predict_proba(pd.DataFrame([_row_a]))[0][1]
-    score_b = model.predict_proba(pd.DataFrame([_row_b]))[0][1]
+    score_a = model.predict_proba(prepare_features_for_prediction(pd.DataFrame([_row_a]), feature_names))[0][1]
+    score_b = model.predict_proba(prepare_features_for_prediction(pd.DataFrame([_row_b]), feature_names))[0][1]
     delta   = score_b - score_a
 
     st.markdown("---")
@@ -2107,9 +2161,6 @@ elif section == "⚙️ Panneau Admin":
 st.markdown("---")
 st.markdown("""
 <div style='text-align:center;padding:1rem;color:#666;font-size:0.8rem;'>
-    🔮 <b>RetainIQ</b> — Plateforme IA de Prédiction du Churn &nbsp;·&nbsp;
-    Projet Industriel 2024-2025 &nbsp;·&nbsp;
-    XGBoost · Streamlit · Plotly
+    🔮 <b>RetainIQ</b> &nbsp;·&nbsp; 
 </div>
-        
 """, unsafe_allow_html=True)
