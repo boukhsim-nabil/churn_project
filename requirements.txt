@@ -11,6 +11,5 @@ shap
 apscheduler
 reportlab
 python-dotenv
-sendgrid
 xlsxwriter
 google-generativeai

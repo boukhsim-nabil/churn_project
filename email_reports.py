@@ -18,15 +18,7 @@ from reportlab.platypus import (
     PageBreak,
 )
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import (
-    Mail,
-    Attachment,
-    FileContent,
-    FileName,
-    FileType,
-    Disposition,
-)
+import requests
 
 
 def _safe(v):
@@ -258,60 +250,81 @@ def send_pdf_via_sendgrid(
     Returns:
         (success: bool, message: str)
     """
-    api_key = os.getenv("SENDGRID_API_KEY")
+    api_key = os.getenv("BREVO_API_KEY")
 
     # Fallback 1 : clé manquante ou placeholder
-    if not api_key or api_key == "SG.xxxxxxx":
+    if not api_key or api_key.startswith("xkeysib-xxx"):
         local_path = _save_pdf_locally(pdf_path, to_email)
-        msg = f"[FALLBACK] SendGrid non configure - PDF sauvegarde localement: {local_path}"
+        msg = f"[FALLBACK] Brevo non configure - PDF sauvegarde localement: {local_path}"
         try:
             print(msg)
         except:
-            pass  # Encoding issue on Windows console
+            pass
         return False, msg
 
+    with open(pdf_path, "rb") as f:
+        encoded_file = base64.b64encode(f.read()).decode()
+
+    payload = {
+        "sender": {"name": from_name, "email": from_email},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": body_text,
+        "attachment": [{"content": encoded_file, "name": Path(pdf_path).name}],
+    }
+
+    headers = {
+        "api-key": api_key,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
     try:
-        with open(pdf_path, "rb") as f:
-            pdf_bytes = f.read()
-
-        encoded_file = base64.b64encode(pdf_bytes).decode()
-
-        message = Mail(
-            from_email=(from_email, from_name),
-            to_emails=to_email,
-            subject=subject,
-            plain_text_content=body_text,
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json=payload,
+            headers=headers,
+            timeout=15,
         )
-
-        attachment = Attachment(
-            FileContent(encoded_file),
-            FileName(Path(pdf_path).name),
-            FileType("application/pdf"),
-            Disposition("attachment"),
-        )
-        message.attachment = attachment
-
-        sg = SendGridAPIClient(api_key)
-        response = sg.send(message)
 
         if 200 <= response.status_code < 300:
-            return True, f"Email envoye a {to_email}"
-        else:
-            # Fallback 2 : SendGrid a échoué
-            local_path = _save_pdf_locally(pdf_path, to_email)
-            msg = f"[FALLBACK] SendGrid a echoue (HTTP {response.status_code}) - PDF sauvegarde: {local_path}"
-            try:
-                print(msg)
-            except:
-                pass  # Encoding issue on Windows console
-            return False, msg
+            return True, f"Email envoyé avec succès à {to_email}"
 
-    except Exception as e:
-        # Fallback 3 : erreur lors de l'envoi
+        # Fallback 2 : Brevo a retourné une erreur HTTP
+        try:
+            detail = response.json().get("message", response.text)
+        except Exception:
+            detail = response.text
         local_path = _save_pdf_locally(pdf_path, to_email)
-        msg = f"[FALLBACK] Erreur SendGrid ({e}) - PDF sauvegarde: {local_path}"
+        msg = f"[FALLBACK] Brevo a retourné le code HTTP {response.status_code} : {detail} - PDF sauvegardé: {local_path}"
         try:
             print(msg)
         except:
-            pass  # Encoding issue on Windows console
+            pass
+        return False, msg
+
+    except requests.exceptions.Timeout:
+        local_path = _save_pdf_locally(pdf_path, to_email)
+        msg = f"[FALLBACK] Délai d'attente dépassé lors de la connexion à l'API Brevo (timeout 15s) - PDF sauvegardé: {local_path}"
+        try:
+            print(msg)
+        except:
+            pass
+        return False, msg
+    except requests.exceptions.ConnectionError:
+        local_path = _save_pdf_locally(pdf_path, to_email)
+        msg = f"[FALLBACK] Impossible de joindre l'API Brevo — vérifiez votre connexion réseau - PDF sauvegardé: {local_path}"
+        try:
+            print(msg)
+        except:
+            pass
+        return False, msg
+    except Exception as exc:
+        # Fallback 3 : erreur inattendue
+        local_path = _save_pdf_locally(pdf_path, to_email)
+        msg = f"[FALLBACK] Erreur inattendue lors de l'envoi : {exc} - PDF sauvegardé: {local_path}"
+        try:
+            print(msg)
+        except:
+            pass
         return False, msg

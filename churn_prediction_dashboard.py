@@ -27,6 +27,7 @@ from data_pipeline import (
 )
 from shap_explainer import show_shap_page
 from email_reports import generate_pdf_report, send_pdf_via_sendgrid
+from database import get_report_recipients, add_report_recipient, delete_report_recipient
 from email_service import send_campaign_email
 from auth import show_auth_page
 from loyalty_page import show_loyalty_page
@@ -1244,19 +1245,19 @@ elif section == "🚨 Alertes Clients":
                     report_title="Rapport RetainIQ - Clients à risque",
                 )
 
-                ok = send_pdf_via_sendgrid(
+                ok, msg = send_pdf_via_sendgrid(
                     to_email=recipient_email,
                     subject=f"RetainIQ - Rapport clients à risque - {user_company}",
                     body_text="Bonjour,\n\nVeuillez trouver en pièce jointe votre rapport RetainIQ.\n\nCordialement,\nRetainIQ",
                     pdf_path=pdf_path,
-                    from_email=os.getenv("SENDER_EMAIL"),
+                    from_email=os.getenv("FROM_EMAIL"),
                     from_name=os.getenv("SENDER_NAME", "RetainIQ"),
                 )
 
                 if ok:
                     st.success("Rapport envoyé avec succès.")
                 else:
-                    st.error("Envoi échoué.")
+                    st.error(f"Envoi échoué : {msg}")
 
     st.markdown("---")
     st.subheader("📌 Actions recommandées pour ce groupe")
@@ -1390,25 +1391,39 @@ elif section == "📧 Campagnes & Rapports":
             "selon la planification définie ci-dessous."
         )
 
-        default_emails = st.session_state.get(
-            "report_recipients",
-            "manager1@entreprise.com, manager2@entreprise.com",
-        )
-        recipients_input = st.text_area(
-            "Adresses email des destinataires",
-            value=default_emails,
-            placeholder="manager1@entreprise.com, manager2@entreprise.com",
-            help="Saisissez les adresses email séparées par des virgules.",
-            key="recipients_textarea",
-        )
+        _recipients = get_report_recipients(user_email)
 
-        if st.button("💾 Enregistrer la liste des managers", use_container_width=True):
-            st.session_state["report_recipients"] = recipients_input.strip()
-            emails_list = [e.strip() for e in recipients_input.split(",") if e.strip()]
-            st.success(
-                f"✅ Configuration sauvegardée — {len(emails_list)} destinataire(s) enregistré(s). "
-                "Ils recevront les alertes filtrées par motif de risque selon la planification ci-dessous."
+        _add_col, _btn_col = st.columns([4, 1])
+        with _add_col:
+            _new_recipient = st.text_input(
+                "Nouvel email destinataire",
+                placeholder="manager@entreprise.com",
+                key="new_recipient_input",
+                label_visibility="collapsed",
             )
+        with _btn_col:
+            if st.button("➕ Ajouter", use_container_width=True, key="add_recipient_btn"):
+                _addr = _new_recipient.strip()
+                if _addr:
+                    add_report_recipient(user_email, _addr)
+                    st.success(f"✅ {_addr} ajouté.")
+                    st.rerun()
+                else:
+                    st.warning("Veuillez saisir une adresse email.")
+
+        if _recipients:
+            for _r in _recipients:
+                _rc1, _rc2 = st.columns([5, 1])
+                with _rc1:
+                    st.text(_r)
+                with _rc2:
+                    if st.button("🗑️ Supprimer", key=f"del_recipient_{_r}"):
+                        delete_report_recipient(user_email, _r)
+                        st.rerun()
+        else:
+            st.info("Aucun destinataire enregistré. Ajoutez-en un ci-dessus.")
+
+        emails_list = _recipients
 
         st.markdown("---")
 
@@ -1458,7 +1473,7 @@ elif section == "📧 Campagnes & Rapports":
         if st.button("📨 Envoyer les rapports maintenant", use_container_width=True, type="primary"):
             with st.spinner("Génération et envoi des rapports en cours…"):
                 try:
-                    sched.trigger_now()
+                    sched.trigger_now(user_email)
                     st.success("✅ Rapports envoyés avec succès à tous les utilisateurs.")
                 except Exception as e:
                     st.error(f"❌ Erreur lors de l'envoi : {e}")

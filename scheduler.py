@@ -34,17 +34,24 @@ next_run_time: Optional[datetime] = None
 
 
 # ── Wrapper du job ─────────────────────────────────────────────────────────
-def _run_weekly_job():
-    """Appelé par APScheduler. Exécute send_weekly_reports() et journalise."""
+def _run_weekly_job(user_email: str = None):
+    """Appelé par APScheduler ou trigger_now(). Exécute send_weekly_reports() et journalise."""
     from weekly_report_job import send_weekly_reports  # import tardif pour éviter les cycles
+    from database import get_all_users
 
     started_at = datetime.now()
     logger.info(f"[Scheduler] Démarrage du rapport hebdomadaire à {started_at:%Y-%m-%d %H:%M:%S}")
 
     try:
-        send_weekly_reports()
+        if user_email:
+            send_weekly_reports(user_email)
+            detail = f"Rapport envoyé pour {user_email}."
+        else:
+            # Cron automatique : envoie pour tous les utilisateurs
+            for email in get_all_users():
+                send_weekly_reports(email)
+            detail = "Rapports envoyés à tous les utilisateurs."
         status = "✅ Succès"
-        detail = "Rapports envoyés à tous les utilisateurs."
     except Exception as exc:
         status = "❌ Erreur"
         detail = str(exc)
@@ -157,9 +164,9 @@ def get_status() -> dict:
     }
 
 
-def trigger_now():
+def trigger_now(user_email: str = None):
     """Lance le job immédiatement (utile depuis le dashboard pour un test)."""
-    _run_weekly_job()
+    _run_weekly_job(user_email)
 
 
 def update_schedule(day_of_week: str, hour: int, minute: int):

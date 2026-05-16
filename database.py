@@ -72,6 +72,14 @@ def init_db():
                 created_at  TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS report_recipients (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_email       TEXT NOT NULL,
+                recipient_email  TEXT NOT NULL,
+                UNIQUE(user_email, recipient_email)
+            )
+        """)
 
 
 # ── Opérations CRUD ────────────────────────────────────────────────────────
@@ -274,6 +282,36 @@ def delete_reward_primitive(primitive_id: int) -> None:
     """Supprime la primitive identifiée par son id."""
     with get_connection() as conn:
         conn.execute("DELETE FROM reward_primitives WHERE id = ?", (primitive_id,))
+
+
+# ── Report Recipients CRUD ────────────────────────────────────────────────
+
+def get_report_recipients(user_email: str) -> list[str]:
+    """Retourne la liste des emails destinataires pour cet utilisateur."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT recipient_email FROM report_recipients WHERE user_email = ? ORDER BY id",
+            (user_email,),
+        ).fetchall()
+    return [row["recipient_email"] for row in rows]
+
+
+def add_report_recipient(user_email: str, recipient_email: str) -> None:
+    """Ajoute un destinataire (ignoré si déjà présent — contrainte UNIQUE)."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO report_recipients (user_email, recipient_email) VALUES (?, ?)",
+            (user_email, recipient_email),
+        )
+
+
+def delete_report_recipient(user_email: str, recipient_email: str) -> None:
+    """Supprime un destinataire pour cet utilisateur."""
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM report_recipients WHERE user_email = ? AND recipient_email = ?",
+            (user_email, recipient_email),
+        )
 
 
 # ── Bootstrap automatique ──────────────────────────────────────────────────
