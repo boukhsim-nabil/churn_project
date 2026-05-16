@@ -1,0 +1,410 @@
+@startuml RetainIQ_Architecture
+
+skinparam classAttributeIconSize 0
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam linetype ortho
+
+skinparam class {
+    BackgroundColor         #F8F9FA
+    BorderColor             #667EEA
+    HeaderBackgroundColor   #667EEA
+    HeaderFontColor         #FFFFFF
+    HeaderFontStyle         bold
+    ArrowColor              #764BA2
+    FontColor               #212529
+}
+
+skinparam stereotype {
+    CBackgroundColor #E8EAFF
+    CBorderColor     #667EEA
+}
+
+skinparam note {
+    BackgroundColor #FFF8E1
+    BorderColor     #F4A423
+}
+
+title <b>RetainIQ — Diagramme d'architecture modulaire</b>\n<size:11>(architecture fonctionnelle : modules représentés comme classes)</size>
+
+' ═══════════════════════════════════════════════════
+'  COUCHE DONNÉES / PERSISTANCE
+' ═══════════════════════════════════════════════════
+
+package "Persistance" #EEF0FF {
+
+    class "database" <<module>> {
+        + DB_PATH : str
+        + VALID_ROLES : tuple
+        .. Initialisation ..
+        + init_db() : None
+        + get_connection() : ContextManager
+        .. CRUD — Users ..
+        + get_user(email) : dict | None
+        + create_user(email, hash, company,\n  secteur, hash_type, role) : None
+        + update_user_hash(email, hash, type) : None
+        + get_all_users() : dict
+        + get_all_users_admin() : list[dict]
+        + get_users_by_company(company) : list[dict]
+        + update_user_role(email, role) : None
+        + delete_user(email) : None
+        + user_exists(email) : bool
+        + seed_default_users(hash_fn) : None
+        .. CRUD — Reward Primitives ..
+        + get_reward_primitives(user_email) : list
+        + create_reward_primitive(user_email,\n  label, action, cible, valeur, duree) : int
+        + delete_reward_primitive(id) : None
+    }
+
+    note right of database
+        <b>SQLite WAL mode</b>
+        Tables :
+        • users (email PK, password_hash,
+          hash_type, company, secteur,
+          role, created_at)
+        • reward_primitives (id AUTOINCREMENT,
+          user_email FK → CASCADE)
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE AUTHENTIFICATION
+' ═══════════════════════════════════════════════════
+
+package "Authentification" #FFF0F5 {
+
+    class "auth" <<module>> {
+        .. Hachage ..
+        + hash_password(password) : str
+        - _check_password(pwd, hash,\n  hash_type) : bool
+        .. Compatibilité ..
+        + load_users() : dict
+        .. Inscription / Connexion ..
+        + register_user(email, password,\n  company, secteur, role) : tuple[bool,str]
+        + login_user(email, password) : tuple[bool, dict|str]
+        .. Interface Streamlit ..
+        + show_auth_page() : None
+    }
+
+    note right of auth
+        Migration transparente
+        SHA256 → bcrypt
+        au prochain login réussi
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE MACHINE LEARNING
+' ═══════════════════════════════════════════════════
+
+package "Machine Learning" #F0FFF4 {
+
+    class "data_pipeline" <<module>> {
+        + TENANT_DATA_DIR : str
+        + SECTEUR_COLUMNS : dict
+        + GLOBAL_TARGET_SYNONYMS : list
+        + CRM_COLUMN_SYNONYMS : list
+        .. Utilitaires ..
+        - _sanitize_company(name) : str
+        .. Détection & Nettoyage ..
+        + detect_columns(df, secteur) : dict
+        + clean_data(df, detection_report) : tuple[DataFrame, list]
+        + quality_report(df_raw, df_clean,\n  detection_report) : dict
+        .. Entraînement ..
+        + train_custom_model(df_clean,\n  user_email, crm_df,\n  detection_report) : tuple[model, metrics, str|None]
+        + prepare_features_for_prediction(\n  df, feature_names) : DataFrame
+        .. Chargement des modèles ..
+        + load_user_model(user_email) : tuple
+        + load_tenant_model(user_company) : tuple
+        .. Triage ..
+        + triage_risque(df_risque,\n  df_full) : DataFrame
+        .. Interface Streamlit ..
+        + show_pipeline_page(user_email,\n  secteur) : None
+    }
+
+    note right of data_pipeline
+        <b>XGBClassifier</b>
+        n_estimators=100, max_depth=4
+        learning_rate=0.1, eval_metric=logloss
+        scale_pos_weight = min(n_neg/n_pos, 10.0)
+        Split stratifié 80/20
+        Fallback : personal → tenant → demo
+    end note
+
+    class "shap_explainer" <<module>> {
+        .. Calcul (caché) ..
+        + compute_shap_values(\n  _model, _X) : tuple[ndarray, float]
+        .. Explication ..
+        + get_shap_explanation_text(\n  shap_vals, feature_names,\n  top_n) : str
+        .. Interface Streamlit ..
+        + show_shap_page(model, df,\n  feature_names) : None
+    }
+
+    note right of shap_explainer
+        @st.cache_data
+        4 vues : globale, signée,
+        individuelle, scatter
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE EMAIL / REPORTING
+' ═══════════════════════════════════════════════════
+
+package "Email & Reporting" #FFFBF0 {
+
+    class "email_reports" <<module>> {
+        .. Utilitaires ..
+        - _safe(v) : str
+        - _risk_label(score) : str
+        + prepare_scored_df(df) : DataFrame
+        .. Génération PDF ..
+        + generate_pdf_report(df, company,\n  sector, output_path,\n  report_title) : str
+        .. Envoi SendGrid ..
+        - _save_pdf_locally(pdf_path,\n  to_email) : str
+        + send_pdf_via_sendgrid(to_email,\n  subject, body, pdf_path,\n  from_email, from_name) : tuple[bool,str]
+    }
+
+    note right of email_reports
+        Triple fallback :
+        1. Clé absente → archivage local
+        2. Erreur HTTP → archivage local
+        3. Exception → reports_archive/
+    end note
+
+    class "email_service" <<module>> {
+        .. Brevo API v3 ..
+        + send_campaign_email(to_email,\n  subject, html_content) : tuple[bool,str]
+    }
+
+    note right of email_service
+        POST https://api.brevo.com
+        /v3/smtp/email
+        Timeout : 10s
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE AUTOMATISATION / PLANIFICATION
+' ═══════════════════════════════════════════════════
+
+package "Automatisation" #FFF5F5 {
+
+    class "scheduler" <<module>> {
+        - _scheduler : BackgroundScheduler
+        - _lock : Lock
+        + run_history : list[dict]
+        + next_run_time : datetime | None
+        .. Gestion du cycle de vie ..
+        + start_scheduler(day_of_week,\n  hour, minute) : BackgroundScheduler
+        + stop_scheduler() : None
+        + get_status() : dict
+        + trigger_now() : None
+        + update_schedule(day_of_week,\n  hour, minute) : None
+        .. Callbacks internes ..
+        - _run_weekly_job() : None
+        - _refresh_next_run() : None
+    }
+
+    note right of scheduler
+        <b>Singleton module</b>
+        Double verrou :
+        • _is_started (niveau processus)
+        • session_state (niveau Streamlit)
+        Timezone : Europe/Paris
+        misfire_grace_time = 3600s
+    end note
+
+    class "weekly_report_job" <<module>> {
+        .. Job hebdomadaire (lundi 8h) ..
+        + send_weekly_reports() : None
+    }
+
+    class "loyalty_messages_job" <<module>> {
+        .. Chargement ..
+        - _load_users() : dict
+        - _load_user_data(user_email) : tuple
+        .. Filtrage ..
+        - _filter_champions(df, model,\n  features) : DataFrame
+        .. Construction messages ..
+        - _build_message(client_idx, tenure,\n  secteur, type_msg) : tuple[str,str]
+        .. Envoi ..
+        - _send_gratitude_email(to_email,\n  subject, body) : bool
+        .. Job mensuel (1er du mois 10h) ..
+        + send_loyalty_messages() : dict
+    }
+
+    note right of loyalty_messages_job
+        Champions : ChurnProba < 0.20
+        ET tenure >= 12 mois
+        Gmail SMTP_SSL port 465
+        tenure % 12 == 0 → anniversaire
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE FIDÉLITÉ / CRM
+' ═══════════════════════════════════════════════════
+
+package "Fidélité & CRM" #F5F0FF {
+
+    class "loyalty_config" <<module>> {
+        + REWARDS_CATALOG : dict
+        + GRATITUDE_MESSAGES : dict
+        + SEGMENTATION_CONFIG : dict
+    }
+
+    note right of loyalty_config
+        5 secteurs ×
+        sauvetage + fidélité + seuils
+        champion_proba_max = 0.20
+        sauvetage_proba_min = 0.50
+    end note
+
+    class "loyalty_page" <<module>> {
+        - _SETTINGS_FILE : str
+        - _DEFAULT_SETTINGS : dict
+        .. Configuration ..
+        - _load_settings(user_email) : dict
+        - _save_settings(user_email,\n  settings) : None
+        .. Webhook ..
+        - _send_webhook(url,\n  payload) : tuple[bool,str]
+        .. Segmentation ..
+        + segment_clients(df,\n  secteur) : tuple[DataFrame, DataFrame, DataFrame]
+        .. Interface Streamlit ..
+        + show_loyalty_page(df, secteur,\n  user_company, user_email,\n  user_role) : None
+        - _render_config_panel(user_email,\n  user_company, secteur) : None
+    }
+
+    note right of loyalty_page
+        3 cohortes :
+        • cohorte_a (sauvetage, >50%)
+        • cohorte_b (fidélité, <35%)
+        • champions (<20%, tenure≥12)
+        Settings → loyalty_settings.json
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE UTILITAIRES
+' ═══════════════════════════════════════════════════
+
+package "Utilitaires" #F5F5F5 {
+
+    class "migrate_users" <<module>> {
+        .. Migration one-shot ..
+        + migrate() : None
+    }
+
+    note right of migrate_users
+        users.json → SQLite
+        Préserve hash_type='sha256'
+        Crée .bak au succès
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  POINT D'ENTRÉE PRINCIPAL
+' ═══════════════════════════════════════════════════
+
+package "Interface Utilisateur" #F0F4FF {
+
+    class "churn_prediction_dashboard" <<module>> {
+        + CATEGORICAL_DUMMIES_MAP : dict
+        + SECTEUR_CONFIG : dict
+        - _DEFAULT_CFG : dict
+        - _ROLE_LABELS : dict
+        .. Flags RBAC (calculés au chargement) ..
+        - _is_super_admin : bool
+        - _is_admin : bool
+        - _is_manager_or_admin : bool
+        .. Helpers UI ..
+        - _get_active_cat_groups(\n  feature_names) : dict
+        + risk_gauge(score) : tuple[Figure,...]
+        + get_recommendations(score,\n  tenure, charges) : list[str]
+        + build_input_df(tenure, charges,\n  contract, internet,\n  security) : DataFrame
+        .. IA Générative ..
+        + gemini_draft_email(context,\n  email_type) : str
+        + gemini_chat_response(question,\n  df_clean) : str
+        .. Pages Streamlit (11 sections) ..
+        + section_bienvenue() : None
+        + section_overview() : None
+        + section_visual_analytics() : None
+        + section_ai_prediction() : None
+        + section_future_scenarios() : None
+        + section_what_if() : None
+        + section_alertes() : None
+        + section_assistant_ia() : None
+        + section_import() : None
+        + section_shap() : None
+        + section_campagnes() : None
+        + section_fidelite() : None
+        + section_admin() : None
+    }
+
+    note right of churn_prediction_dashboard
+        Point d'entrée unique
+        <b>streamlit run churn_prediction_dashboard.py</b>
+        Navigation : st.session_state["section"]
+        Garde RBAC : st.stop() côté serveur
+        Gemini 2.5 Flash : chatbot + emails
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  RELATIONS
+' ═══════════════════════════════════════════════════
+
+' auth ↔ database
+auth "1" --> "1" database : utilise (CRUD users)
+
+' dashboard → auth
+churn_prediction_dashboard "1" --> "1" auth : authentification\nshow_auth_page()
+
+' dashboard → ML
+churn_prediction_dashboard "1" --> "1" data_pipeline : pipeline + prédictions\nload/train/triage
+churn_prediction_dashboard "1" --> "1" shap_explainer : explainabilité\nshow_shap_page()
+
+' dashboard → email
+churn_prediction_dashboard "1" --> "1" email_reports : rapports PDF\nsend_pdf_via_sendgrid()
+churn_prediction_dashboard "1" --> "1" email_service : campagnes Brevo\nsend_campaign_email()
+
+' dashboard → scheduler
+churn_prediction_dashboard "1" --> "1" scheduler : start / trigger / status
+
+' dashboard → fidélité
+churn_prediction_dashboard "1" --> "1" loyalty_page : programme fidélité\nshow_loyalty_page()
+
+' dashboard → database (admin panel)
+churn_prediction_dashboard "1" --> "1" database : gestion utilisateurs\n(Panneau Admin)
+
+' scheduler → jobs
+scheduler "1" *-- "1" weekly_report_job : déclenche\n(lundi 8h)
+scheduler "1" *-- "1" loyalty_messages_job : déclenche\n(1er du mois 10h)
+
+' weekly_report_job → ses dépendances
+weekly_report_job "1" --> "1" auth : load_users()
+weekly_report_job "1" --> "1" data_pipeline : load_user_model()
+weekly_report_job "1" --> "1" email_reports : generate_pdf_report()\nsend_pdf_via_sendgrid()
+
+' loyalty_messages_job → ses dépendances
+loyalty_messages_job "1" --> "1" database : get_all_users()
+loyalty_messages_job "1" --> "1" data_pipeline : load_user_model()
+loyalty_messages_job "1" --> "1" loyalty_config : templates messages
+
+' loyalty_page → ses dépendances
+loyalty_page "1" --> "1" database : reward_primitives CRUD
+loyalty_page "1" --> "1" loyalty_config : REWARDS_CATALOG\nSEGMENTATION_CONFIG
+
+' migrate_users → database (one-shot)
+migrate_users "1" ..> "1" database : migration one-shot\nusers.json → SQLite
+
+@enduml

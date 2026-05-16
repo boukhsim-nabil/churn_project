@@ -1,96 +1,1050 @@
-# RetainIQ v2.0 — Plateforme IA de Prédiction & Rétention du Churn
+# RetainIQ — Plateforme IA de Prédiction & Rétention du Churn
 
-> Projet Industriel 2024-2025 · XGBoost · Streamlit · APScheduler · SHAP · SendGrid · Gmail SMTP · SQLite · bcrypt
+> **Projet Industriel 2024-2025**  
+> Stack : Python · Streamlit · XGBoost · SHAP · SQLite · APScheduler · SendGrid · Brevo · Gemini AI
 
 ---
 
 ## Table des matières
 
-- [Positionnement & Vision Produit](#positionnement--vision-produit)
-1. [Vue d'ensemble du projet](#1-vue-densemble-du-projet)
-2. [Nouveautés de la v2.0](#2-nouveautés-de-la-v20)
-3. [Architecture générale](#3-architecture-générale)
-4. [Stack technique](#4-stack-technique)
-5. [Structure des fichiers](#5-structure-des-fichiers)
-6. [Schéma de la base de données](#6-schéma-de-la-base-de-données)
-7. [Modèle de Données — Data Model](#7-modèle-de-données--data-model)
-8. [Installation et démarrage](#8-installation-et-démarrage)
-9. [Variables d'environnement](#9-variables-denvironnement)
-10. [Workflows Fonctionnels Détaillés](#10-workflows-fonctionnels-détaillés)
-    - 10.1 [Workflow 1 — Ingestion et Prédiction ML](#101-workflow-1--ingestion-et-prédiction-ml)
-    - 10.2 [Workflow 2 — Moteur de Triage Statistique](#102-workflow-2--moteur-de-triage-statistique)
-    - 10.3 [Workflow 3 — Action en Boucle Fermée](#103-workflow-3--action-en-boucle-fermée)
-    - 10.4 [Workflow 4 — Automatisation et Gouvernance](#104-workflow-4--automatisation-et-gouvernance)
-11. [Workflow complet — étape par étape (v2.0)](#11-workflow-complet--étape-par-étape-v20)
-    - 11.1 [Authentification et inscription](#111-authentification-et-inscription)
-    - 11.2 [Blank Slate — premier démarrage](#112-blank-slate--premier-démarrage)
-    - 11.3 [Import CSV et pipeline de données](#113-import-csv-et-pipeline-de-données)
-    - 11.4 [Entraînement du modèle XGBoost](#114-entraînement-du-modèle-xgboost)
-    - 11.5 [Dashboard Overview et Visual Analytics](#115-dashboard-overview-et-visual-analytics)
-    - 11.6 [Prédiction IA et jauge de risque](#116-prédiction-ia-et-jauge-de-risque)
-    - 11.7 [Simulateur What-If](#117-simulateur-what-if)
-    - 11.8 [Alertes Clients](#118-alertes-clients)
-    - 11.9 [Explainabilité SHAP](#119-explainabilité-shap)
-    - 11.10 [Assistant IA (Chatbot)](#1110-assistant-ia-chatbot)
-    - 11.11 [Programme de Fidélité (NOUVEAU v2.0)](#1111-programme-de-fidélité-nouveau-v20)
-    - 11.12 [Rapports planifiés et scheduler](#1112-rapports-planifiés-et-scheduler)
-12. [Documentation complète des modules](#12-documentation-complète-des-modules)
-    - [churn_prediction_dashboard.py](#churn_prediction_dashboardpy)
-    - [auth.py](#authpy)
-    - [database.py](#databasepy)
-    - [data_pipeline.py](#data_pipelinepy)
-    - [shap_explainer.py](#shap_explainerpy)
-    - [email_reports.py](#email_reportspy)
-    - [weekly_report_job.py](#weekly_report_jobpy)
-    - [scheduler.py](#schedulerpy)
-    - [loyalty_page.py](#loyalty_pagepy)
-    - [loyalty_config.py](#loyalty_configpy)
-    - [loyalty_messages_job.py](#loyalty_messages_jobpy)
-13. [Dictionnaire des Fonctions Core](#13-dictionnaire-des-fonctions-core)
-14. [Pages du dashboard (toutes)](#14-pages-du-dashboard-toutes)
-15. [Système de segmentation clients v2.0](#15-système-de-segmentation-clients-v20)
-16. [Catalogue de récompenses](#16-catalogue-de-récompenses)
-17. [Scheduler — deux jobs automatiques](#17-scheduler--deux-jobs-automatiques)
-18. [Sécurité et Garde-Fous](#18-sécurité-et-garde-fous)
-19. [Limites connues et pistes d'amélioration](#19-limites-connues-et-pistes-damélioration)
+- [1. Vue d'ensemble du projet](#1-vue-densemble-du-projet)
+- [2. Architecture générale](#2-architecture-générale)
+- [3. Workflow complet — de l'import CSV à la prédiction finale](#3-workflow-complet--de-limport-csv-à-la-prédiction-finale)
+  - [Étape 1 — Authentification](#étape-1--authentification)
+  - [Étape 2 — Import du fichier CSV](#étape-2--import-du-fichier-csv)
+  - [Étape 3 — Détection automatique des colonnes](#étape-3--détection-automatique-des-colonnes)
+  - [Étape 4 — Nettoyage automatique des données](#étape-4--nettoyage-automatique-des-données)
+  - [Étape 5 — Rapport de qualité](#étape-5--rapport-de-qualité)
+  - [Étape 6 — Entraînement du modèle XGBoost](#étape-6--entraînement-du-modèle-xgboost)
+  - [Étape 7 — Prédictions et enrichissement du DataFrame](#étape-7--prédictions-et-enrichissement-du-dataframe)
+  - [Étape 8 — Exploitation dans le dashboard](#étape-8--exploitation-dans-le-dashboard)
+- [4. Guide d'installation](#4-guide-dinstallation)
+  - [4.1 Prérequis](#41-prérequis)
+  - [4.2 Installation pas-à-pas](#42-installation-pas-à-pas)
+  - [4.3 Configuration des variables d'environnement](#43-configuration-des-variables-denvironnement)
+  - [4.4 Lancement de l'application](#44-lancement-de-lapplication)
+  - [4.5 Comptes de démonstration](#45-comptes-de-démonstration)
+  - [4.6 Commandes utilitaires](#46-commandes-utilitaires)
 
 ---
 
-## Positionnement & Vision Produit
+## 1. Vue d'ensemble du projet
 
-### De l'IA Prédictive à l'IA Prescriptive
+### Qu'est-ce que RetainIQ ?
 
-RetainIQ s'inscrit dans une trajectoire d'évolution fondamentale : la plateforme ne se limite pas à *prédire* le churn — elle orchestre la **réponse opérationnelle complète**, formant une boucle de rétention autonome et mesurable.
+**RetainIQ** est une plateforme web B2B d'intelligence artificielle dédiée à la **prédiction et à la rétention du churn client**. Elle permet à des entreprises de cinq secteurs d'activité différents de transformer leurs données clients brutes en décisions de rétention concrètes et automatisées, sans compétences techniques préalables.
+
+La plateforme couvre l'intégralité de la chaîne de valeur de la rétention :
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│              BOUCLE DE RÉTENTION AUTONOME                   │
-│                                                             │
-│   DÉTECTER       COMPRENDRE       AGIR          MESURER     │
-│   ────────       ───────────      ────          ────────    │
-│  XGBoost ML  →  SHAP + Triage  → Campagne  →  KPIs + PDF   │
-│  ChurnProba     Motif de Risque   Fidélité     Scheduler    │
-└─────────────────────────────────────────────────────────────┘
+DÉTECTER → COMPRENDRE → SIMULER → ALERTER → AGIR → AUTOMATISER
 ```
 
-### SaaS B2B Agnostique
+| Capacité | Ce que RetainIQ fait concrètement |
+|---|---|
+| **Détecter** | Prédit la probabilité de départ de chaque client (score 0–100%) via XGBoost |
+| **Comprendre** | Explique les facteurs de risque par client grâce à SHAP (IA explicable) |
+| **Simuler** | Mesure l'impact d'une action commerciale avant de la mettre en œuvre (What-If) |
+| **Alerter** | Identifie et priorise les clients nécessitant une intervention immédiate |
+| **Agir** | Déclenche des campagnes de rétention ciblées avec emails personnalisés par IA (Gemini) |
+| **Automatiser** | Envoie des rapports PDF hebdomadaires et des messages de fidélité mensuels automatiquement |
 
-Contrairement aux solutions sectorielles rigides, RetainIQ adopte une architecture **agnostique au domaine métier** :
+### Secteurs d'activité supportés
 
-- **Détection automatique des colonnes** : l'outil s'adapte à la structure du CSV fourni, sans configuration manuelle obligatoire, grâce à un moteur d'inférence basé sur des heuristiques nommées et des fallbacks binaires.
-- **Moteur de triage statistique universel** : les seuils de risque sont calculés dynamiquement à partir des distributions réelles du jeu de données (quantile P75), rendant les règles métier indépendantes de toute terminologie sectorielle.
-- **5 secteurs préconfigurés** : Télécom, Fitness, E-commerce, EdTech, SaaS B2B — chacun avec ses colonnes attendues, ses récompenses et ses messages de gratitude.
+RetainIQ est conçu pour être **agnostique au secteur** : il détecte automatiquement la structure des données importées et adapte ses colonnes, ses récompenses et ses messages en conséquence.
 
-### Architecture API-First
+| Secteur | Variable cible | Colonnes comportementales principales |
+|---|---|---|
+| 📱 Télécom | `Churn`, `churn`, `resiliation` | `tenure`, `MonthlyCharges`, `TotalCharges` |
+| 💪 Salle de Sport | `resiliation`, `churn`, `depart` | `visites_mois`, `abonnement_mensuel`, `anciennete_mois` |
+| 🛍️ E-commerce | `inactif`, `churn`, `depart` | `nb_commandes`, `panier_moyen`, `jours_inactif` |
+| 🎓 EdTech | `desinscription`, `churn` | `cours_termines`, `connexions_semaine`, `anciennete_mois` |
+| ☁️ SaaS B2B | `resiliation`, `churn`, `churned` | `mrr`, `nb_utilisateurs`, `anciennete_mois` |
 
-RetainIQ est conçu pour s'intégrer nativement à tout écosystème CRM/ERP via une interface **API-First** basée sur des *payloads* JSON standardisés. Chaque déclenchement de campagne génère un objet structuré transmissible par webhook :
+### Système de rôles (RBAC)
+
+L'accès aux fonctionnalités est contrôlé par un système de **quatre rôles hiérarchiques** :
+
+| Rôle | Accès | Cas d'usage typique |
+|---|---|---|
+| `super_admin` | Total — gestion de tous les utilisateurs de la plateforme | Équipe technique RetainIQ |
+| `admin` | Import données, entraînement, toutes les pages analytics, panneau admin | Responsable IT / Data de l'entreprise |
+| `manager` | Visual Analytics, campagnes, rapports, configuration fidélité | Chef d'équipe / Responsable CRM |
+| `agent` | Overview, prédictions, alertes, simulateur, assistant IA, fidélité | Commercial / Agent de rétention |
+
+### Stack technique
+
+| Couche | Technologie | Rôle |
+|---|---|---|
+| Interface web | Streamlit 1.35+ | Rendu UI, session state, routing des pages |
+| Machine Learning | XGBoost 2.0+ | Classification binaire du churn (`predict_proba`) |
+| Prétraitement | scikit-learn | Split train/test, métriques (Accuracy, F1, AUC-ROC) |
+| Données | Pandas / NumPy | Lecture CSV, nettoyage, encodage one-hot, quantiles |
+| Explainabilité | SHAP | `TreeExplainer`, valeurs Shapley par feature et par client |
+| Visualisation | Plotly / Matplotlib / Seaborn | Jauges, histogrammes, scatter, heatmaps, pie charts |
+| Base de données | SQLite (`retainiq.db`) | Utilisateurs, rôles, catalogue de récompenses |
+| Authentification | bcrypt | Hash sécurisé des mots de passe, migration SHA256 → bcrypt |
+| Rapports PDF | ReportLab | Génération A4 structurée (KPIs, Top 10 clients, recommandations) |
+| Email rapports | SendGrid API | Envoi des PDFs hebdomadaires en pièce jointe |
+| Email campagnes | Brevo API v3 | Envoi d'emails HTML de rétention ciblés |
+| Email fidélité | Gmail SMTP | Messages de gratitude mensuels (SMTP_SSL port 465) |
+| Scheduling | APScheduler | 2 jobs cron automatiques (lundi 8h + 1er du mois 10h) |
+| Assistant IA | Google Gemini 2.5 Flash | Chatbot contextuel + rédaction d'emails de rétention |
+| Variables d'env | python-dotenv | Chargement sécurisé des clés API depuis `.env` |
+
+---
+
+## 2. Architecture générale
+
+```
+churn_prediction_dashboard.py     ← Point d'entrée Streamlit (routeur de pages + RBAC)
+│
+├── auth.py                       ← Login / inscription / migration bcrypt
+│   └── database.py               ← Couche SQLite pure (CRUD, aucune dépendance projet)
+│
+├── data_pipeline.py              ← Import CSV · détection colonnes · nettoyage · XGBoost
+│                                    · triage_risque() — moteur statistique P75 agnostique
+│
+├── shap_explainer.py             ← SHAP TreeExplainer · 4 vues · explication langage naturel
+│
+├── email_reports.py              ← PDF ReportLab · envoi SendGrid · fallback sauvegarde locale
+├── email_service.py              ← Envoi campagnes HTML via API Brevo
+│
+├── loyalty_page.py               ← Page Fidélité (segmentation, catalogue, webhook)
+│   └── loyalty_config.py         ← Catalogue récompenses · messages gratitude · seuils
+│
+├── scheduler.py                  ← Singleton APScheduler (2 jobs cron)
+│   ├── weekly_report_job.py      ← Job lundi 8h → PDF → SendGrid
+│   └── loyalty_messages_job.py   ← Job 1er du mois 10h → champions → Gmail SMTP
+│
+└── retainiq.db                   ← SQLite (tables : users · reward_primitives)
+```
+
+**Flux de données de bout en bout :**
+
+```
+[CSV client]
+     │
+     ▼
+data_pipeline.py
+  ├── detect_columns()      → Classification auto (numérique / catégoriel / ignoré / cible)
+  ├── clean_data()          → Imputation médiane/mode · one-hot encoding · normalisation cible
+  ├── quality_report()      → Score qualité 0–100 · avertissements · recommandations
+  └── train_custom_model()  → XGBoost · model_[email].pkl + data_[email].csv
+     │
+     ▼
+[Dashboard Streamlit]
+  ├── df['ChurnProba']      → model.predict_proba(X)[:, 1]
+  ├── df['RiskLevel']       → Faible / Modéré / Élevé
+  ├── triage_risque()       → Motif de Risque + Action Suggérée (seuils P75)
+  ├── shap_explainer.py     → 4 vues SHAP (importance, impact, individuel, scatter)
+  ├── loyalty_page.py       → Segmentation 3 cohortes · catalogue · webhook JSON
+  └── email_reports.py      → PDF A4 → SendGrid / fallback local
+     │
+     ▼
+[APScheduler — 2 jobs automatiques]
+  ├── Lundi 8h00            → weekly_report_job.py → PDF → SendGrid
+  └── 1er du mois 10h00     → loyalty_messages_job.py → champions → Gmail SMTP
+```
+
+---
+
+## 3. Workflow complet — de l'import CSV à la prédiction finale
+
+Cette section décrit pas-à-pas le parcours utilisateur complet, depuis la connexion initiale jusqu'à l'exploitation des prédictions dans le dashboard.
+
+---
+
+### Étape 1 — Authentification
+
+**Fichier :** `auth.py` + `database.py`
+
+L'utilisateur arrive sur la page de connexion (`show_auth_page()`). Il peut soit se connecter avec un compte existant, soit créer un nouveau compte.
+
+**Connexion :**
+
+1. Le formulaire envoie l'email et le mot de passe à `login_user(email, password)`.
+2. `get_user(email)` interroge SQLite pour récupérer le hash stocké et son type (`bcrypt` ou `sha256`).
+3. `_check_password()` vérifie le mot de passe selon le type de hash :
+   - `bcrypt` → `bcrypt.checkpw()`
+   - `sha256` → `hashlib.sha256()` (anciens comptes)
+4. Si la vérification réussit et que le hash est de type `sha256`, il est **automatiquement migré en bcrypt** (`update_user_hash()`), sans intervention de l'utilisateur.
+5. En cas de succès, les informations de session sont écrites dans `st.session_state` : `logged_in`, `user_email`, `user_company`, `user_secteur`, `user_role`.
+
+**Inscription :**
+
+Le formulaire collecte l'entreprise, l'email, le secteur et le mot de passe. `register_user()` hash le mot de passe avec bcrypt et insère l'enregistrement dans SQLite via `create_user()`.
+
+**Comptes seedés automatiquement :** Quatre comptes de démonstration sont créés au premier démarrage par `seed_default_users()` (voir section 4.5).
+
+---
+
+### Étape 2 — Import du fichier CSV
+
+**Fichier :** `data_pipeline.py` → `show_pipeline_page()`
+
+Une fois connecté, si l'utilisateur n'a pas encore de modèle actif, il est dirigé vers la page **"Importer mes données"** (état Blank Slate).
+
+1. L'utilisateur dépose son fichier CSV via `st.file_uploader()`.
+2. Le fichier est lu avec `pd.read_csv()`.
+3. **Sauvegarde partagée (multi-tenant) :** si l'utilisateur appartient à une entreprise (`user_company`), le CSV brut est immédiatement copié dans `tenant_data/[company]_data.csv`. Cela permet aux agents de la même entreprise de bénéficier des données importées par l'admin.
+4. Si aucun fichier n'est déposé mais qu'un CSV partagé existe déjà pour cette entreprise, il est **rechargé automatiquement**, sans nouvelle action de l'utilisateur.
+
+**Format CSV accepté :** séparateur virgule ou point-virgule · encodage UTF-8 ou Latin-1 · minimum 50 lignes.
+
+---
+
+### Étape 3 — Détection automatique des colonnes
+
+**Fichier :** `data_pipeline.py` → `detect_columns(df, secteur)`
+
+Cette étape est entièrement automatique. Aucune configuration manuelle n'est requise.
+
+**3.1 — Nettoyage des noms de colonnes**
+
+```python
+df.columns = df.columns.str.strip()
+```
+
+Les espaces parasites en début/fin de chaque nom de colonne sont supprimés avant toute analyse.
+
+**3.2 — Extraction des colonnes CRM (PII)**
+
+Avant de passer les données au modèle, les colonnes contenant des données personnelles identifiables sont isolées :
+
+```python
+CRM_COLUMN_SYNONYMS = [
+    "email", "mail", "courriel", "telephone", "phone", "tel", "mobile",
+    "nom", "prenom", "customerid", "client_id", "customer_id", "id_client",
+]
+_crm_cols = [c for c in df.columns if any(kw in c.lower() for kw in CRM_COLUMN_SYNONYMS)]
+```
+
+Ces colonnes sont conservées séparément et réintégrées après la prédiction pour l'affichage CRM. Elles ne sont **jamais transmises au modèle XGBoost**.
+
+**3.3 — Détection de la colonne cible**
+
+La fonction recherche la colonne cible (churn) en deux passes :
+
+- **Passe 1 :** comparaison directe avec les synonymes du secteur + `GLOBAL_TARGET_SYNONYMS` (20+ variantes : `churn`, `resiliation`, `exited`, `inactif`, `desinscription`...).
+- **Passe 2 (fallback) :** si aucune colonne nommée n'est trouvée, la fonction cherche une colonne **binaire** dont les valeurs appartiennent à `{0, 1, yes, no, true, false, oui, non}`.
+- **Fallback interactif :** si aucune colonne binaire n'est trouvée automatiquement, un `st.selectbox` est présenté à l'utilisateur pour qu'il désigne manuellement la colonne cible. L'application ne bloque pas.
+
+**3.4 — Classification des autres colonnes**
+
+| Type détecté | Condition | Traitement ultérieur |
+|---|---|---|
+| Numérique | `pd.api.types.is_numeric_dtype()` | Imputation médiane |
+| Texte converti en numérique | Taux de conversion ≥ 80% | Converti puis imputation médiane |
+| Catégoriel | `dtype == object` et ≤ 20 valeurs uniques | One-hot encoding |
+| Ignorée | ID, dates, PII, ou >20 valeurs uniques | Exclue du modèle |
+
+**Résultat :** un dictionnaire `detection_report` contenant `target_col`, `numeric_cols`, `categorical_cols`, `ignored_cols` et `warnings`.
+
+---
+
+### Étape 4 — Nettoyage automatique des données
+
+**Fichier :** `data_pipeline.py` → `clean_data(df, detection_report)`
+
+Le nettoyage s'applique dans l'ordre suivant :
+
+1. **Suppression des colonnes ignorées** : les colonnes `id`, `date`, PII et à trop haute cardinalité sont retirées du DataFrame.
+2. **Imputation des valeurs manquantes numériques** : chaque valeur `NaN` est remplacée par la **médiane** de la colonne.
+3. **Imputation des valeurs manquantes catégorielles** : chaque valeur `NaN` est remplacée par le **mode** (valeur la plus fréquente) de la colonne.
+4. **Encodage one-hot** : `pd.get_dummies(df, columns=[col], drop_first=True)` — crée des colonnes binaires pour chaque modalité.
+5. **Encodage de la colonne cible** :
+
+```python
+mapping = {
+    "yes": 1, "no": 0, "oui": 1, "non": 0,
+    "true": 1, "false": 0, "1": 1, "0": 0,
+    "churned": 1, "active": 0, "actif": 0
+}
+```
+
+6. **Suppression des lignes sans cible** : toute ligne où `Churn` est `NaN` après encodage est supprimée.
+7. **Renommage uniforme** : la colonne cible est renommée `"Churn"` quel que soit son nom d'origine (`resiliation`, `inactif`, `desinscription`...).
+
+Un `cleaning_log` textuel est affiché à l'utilisateur pour chaque transformation appliquée.
+
+---
+
+### Étape 5 — Rapport de qualité
+
+**Fichier :** `data_pipeline.py` → `quality_report(df_raw, df_clean, detection_report)`
+
+Un score de qualité sur 100 est calculé automatiquement et affiché à l'utilisateur avant l'entraînement.
+
+| Problème détecté | Pénalité |
+|---|---|
+| Taux de churn < 5% (déséquilibre sévère) | −20 points |
+| Taux de churn > 50% (encodage probablement inversé) | −20 points |
+| Valeurs manquantes > 20% | −20 points |
+| Valeurs manquantes entre 5% et 20% | −5 points |
+| Dataset < 200 lignes | −30 points |
+| Dataset entre 200 et 500 lignes | −10 points |
+| Colonne cible non détectée | −40 points |
+
+Si le score est inférieur à 30, l'entraînement est bloqué et un message d'erreur explicite est affiché.
+
+---
+
+### Étape 6 — Entraînement du modèle XGBoost
+
+**Fichier :** `data_pipeline.py` → `train_custom_model(df_clean, user_email, crm_df, detection_report)`
+
+**6.1 — Séparation des features et de la cible**
+
+```python
+X = df_clean.drop("Churn", axis=1)
+y = df_clean["Churn"]
+```
+
+**6.2 — Gestion du déséquilibre de classes**
+
+Le ratio classes négative/positive est calculé et plafonné à 10 pour éviter un modèle trop agressif :
+
+```python
+raw_weight = (y == 0).sum() / (y == 1).sum()
+scale_pos_weight = min(raw_weight, 10.0)
+```
+
+**6.3 — Split entraînement / test**
+
+```python
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, stratify=y, random_state=42
+)
+```
+
+La stratification garantit que la proportion de clients churns est la même dans les deux ensembles.
+
+**6.4 — Entraînement**
+
+```python
+model = XGBClassifier(
+    use_label_encoder=False,
+    eval_metric="logloss",
+    random_state=42,
+    n_estimators=100,
+    max_depth=4,
+    learning_rate=0.1,
+    scale_pos_weight=scale_pos_weight,
+)
+model.fit(X_train, y_train)
+```
+
+**6.5 — Métriques de performance**
+
+Trois métriques sont calculées sur le jeu de test et affichées à l'utilisateur :
+
+| Métrique | Description |
+|---|---|
+| **Accuracy** | Pourcentage de prédictions correctes (churns + actifs) |
+| **F1-Score** | Moyenne harmonique précision/rappel — robuste aux classes déséquilibrées |
+| **AUC-ROC** | Aire sous la courbe ROC — capacité de discrimination du modèle |
+
+**6.6 — Sauvegarde**
+
+Le modèle et ses métadonnées sont sérialisés avec `pickle` :
+
+```python
+saved_payload = {
+    "model":    model,           # XGBClassifier entraîné
+    "features": list(X.columns), # Ordre exact des features (critique pour predict)
+    "metrics":  metrics,
+    "scale_pos_weight": scale_pos_weight,
+    "churn_rate_train": round(y.mean() * 100, 2),
+    "categorical_cols": ...,
+    "numeric_cols": ...,
+}
+```
+
+Fichiers générés : `model_[email_safe].pkl` et `data_[email_safe].csv`.
+
+**Multi-tenant :** le modèle est automatiquement copié vers `tenant_data/[company]_model.pkl` pour être partagé avec tous les agents de la même entreprise.
+
+---
+
+### Étape 7 — Prédictions et enrichissement du DataFrame
+
+**Fichier :** `churn_prediction_dashboard.py`
+
+Au chargement du dashboard, le modèle sauvegardé est rechargé et appliqué à l'ensemble du dataset :
+
+**7.1 — Alignement des features**
+
+Avant toute prédiction, les colonnes du DataFrame sont réalignées sur l'ordre exact utilisé lors de l'entraînement :
+
+```python
+def prepare_features_for_prediction(df, feature_names):
+    return df.reindex(columns=feature_names, fill_value=0)
+```
+
+Cela évite tout désalignement silencieux entre les colonnes de train et de predict.
+
+**7.2 — Calcul des scores**
+
+```python
+df['ChurnProba'] = model.predict_proba(X_all)[:, 1]
+```
+
+**7.3 — Attribution des niveaux de risque**
+
+```python
+df['RiskLevel'] = df['ChurnProba'].apply(
+    lambda x: "🔴 Risque Élevé" if x > 0.6
+              else ("🟡 Risque Modéré" if x > 0.35
+              else "🟢 Risque Faible")
+)
+```
+
+**7.4 — Moteur de triage statistique (P75)**
+
+Pour chaque client à risque, `triage_risque()` attribue un **motif de risque** et une **action suggérée** en comparant les valeurs du client aux seuils statistiques du dataset complet (quantile P75 des charges mensuelles) :
+
+| Motif attribué | Conditions |
+|---|---|
+| Nouveau client — pression tarifaire | `tenure ≤ 6` ET `MonthlyCharges > P75` |
+| Absence d'engagement | Contrat mensuel détecté |
+| Pression tarifaire | `MonthlyCharges > P75` uniquement |
+| Nouveau client | `tenure ≤ 6` uniquement |
+| Risque d'insatisfaction globale | Aucune condition spécifique |
+
+---
+
+### Étape 8 — Exploitation dans le dashboard
+
+Le DataFrame enrichi (`ChurnProba`, `RiskLevel`, `Motif de Risque`, `Action Suggérée`) alimente toutes les pages du dashboard. Chaque page offre une perspective différente sur les mêmes données :
+
+| Page | Ce qu'elle apporte |
+|---|---|
+| 🏠 Overview | KPIs globaux (total clients, taux de churn, score modèle, clients urgents) |
+| 📊 Visual Analytics | Graphiques distribution, corrélation, importance des features |
+| 🔮 AI Prediction | Prédiction manuelle pour un client fictif, avec jauge de risque |
+| 🌟 Future Scenarios | Simulation de l'impact d'un changement tarifaire ou de tenure sur le churn global |
+| ⚡ Simulateur What-If | Comparaison avant/après action pour un client — deux jauges temps réel |
+| 🚨 Alertes Clients | Liste priorisée des clients à risque, filtrée par motif, exportable en Excel |
+| 🧠 Explainable AI | 4 vues SHAP — importance globale, impact positif/négatif, individuel, scatter |
+| 🤖 Assistant IA | Chatbot Gemini contextualisé sur les données chargées |
+| 🏆 Programme de Fidélité | Segmentation 3 cohortes, catalogue récompenses, déclenchement campagne + webhook |
+| 📧 Campagnes & Rapports | Relance individuelle/groupée via Brevo, rapports PDF, scheduler |
+| ⚙️ Panneau Admin | Gestion des utilisateurs, rôles, paramètres entreprise |
+
+---
+
+## 4. Guide d'installation
+
+### 4.1 Prérequis
+
+| Prérequis | Version minimale | Vérification |
+|---|---|---|
+| Python | 3.11+ | `python --version` |
+| pip | — | `pip --version` |
+| Git | — | `git --version` |
+
+### 4.2 Installation pas-à-pas
+
+**Étape 1 — Cloner le dépôt**
+
+```bash
+git clone <url-du-repo>
+cd AI-Powered-Churn-Prediction-main
+```
+
+**Étape 2 — Créer un environnement virtuel**
+
+```bash
+# Créer l'environnement
+python -m venv .venv
+
+# Activer (Linux / macOS)
+source .venv/bin/activate
+
+# Activer (Windows — PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Activer (Windows — CMD)
+.venv\Scripts\activate.bat
+```
+
+**Étape 3 — Installer les dépendances**
+
+```bash
+pip install -r requirements.txt
+```
+
+Liste des packages installés :
+
+```
+streamlit          # Interface web
+pandas             # Manipulation des données
+numpy              # Calcul numérique
+matplotlib         # Visualisations statiques
+seaborn            # Heatmaps et distributions
+scikit-learn       # Split, métriques ML
+xgboost            # Modèle de prédiction churn
+plotly             # Visualisations interactives
+bcrypt             # Hachage sécurisé des mots de passe
+shap               # Explainabilité du modèle
+apscheduler        # Jobs automatiques planifiés
+reportlab          # Génération de rapports PDF
+python-dotenv      # Chargement des variables d'environnement
+sendgrid           # Envoi des rapports par email
+xlsxwriter         # Export Excel formaté
+google-generativeai # API Gemini (assistant IA + rédaction emails)
+```
+
+**Étape 4 — Initialiser la base de données**
+
+La base SQLite est créée **automatiquement** au premier démarrage de l'application. Pour l'initialiser manuellement :
+
+```bash
+python -c "from database import init_db; init_db()"
+```
+
+---
+
+### 4.3 Configuration des variables d'environnement
+
+Créez un fichier `.env` à la racine du projet :
+
+```bash
+# Copier le template (si disponible)
+cp .env.example .env
+```
+
+Contenu du fichier `.env` :
+
+```env
+# ── API Gemini (Assistant IA + rédaction emails) ──────────────────
+GEMINI_API_KEY=AIzaSy...
+
+# ── SendGrid (rapports PDF hebdomadaires) ────────────────────────
+SENDGRID_API_KEY=SG.xxxxxxx
+SENDER_EMAIL=noreply@votreentreprise.com
+SENDER_NAME=RetainIQ
+
+# ── Brevo (campagnes email de rétention) ─────────────────────────
+BREVO_API_KEY=xkeysib-...
+FROM_EMAIL=campagnes@votreentreprise.com
+
+# ── Gmail SMTP (messages de gratitude mensuels) ──────────────────
+GMAIL_ADDRESS=votre.compte@gmail.com
+GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+```
+
+> **Note :** `GMAIL_APP_PASSWORD` est un **mot de passe d'application** Google (pas votre mot de passe Gmail habituel). À générer sur [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) avec la validation en deux étapes activée.
+
+> **Sécurité :** ne committez jamais le fichier `.env` dans Git. Il est (et doit rester) dans `.gitignore`.
+
+**Dépendances entre les variables :**
+
+| Fonctionnalité | Variables requises |
+|---|---|
+| Assistant IA chatbot | `GEMINI_API_KEY` |
+| Rédaction emails par IA | `GEMINI_API_KEY` |
+| Rapports PDF hebdomadaires | `SENDGRID_API_KEY` + `SENDER_EMAIL` |
+| Campagnes de rétention (Brevo) | `BREVO_API_KEY` + `FROM_EMAIL` |
+| Messages de gratitude mensuels | `GMAIL_ADDRESS` + `GMAIL_APP_PASSWORD` |
+
+> Si une variable est absente, la fonctionnalité correspondante est désactivée (message d'avertissement) — **l'application continue de fonctionner**.
+
+---
+
+### 4.4 Lancement de l'application
+
+```bash
+streamlit run churn_prediction_dashboard.py
+```
+
+L'application s'ouvre automatiquement sur **[http://localhost:8501](http://localhost:8501)**.
+
+Au premier démarrage :
+1. La base SQLite `retainiq.db` est créée automatiquement.
+2. Les quatre comptes de démonstration sont seedés.
+3. Le scheduler APScheduler démarre en arrière-plan (deux jobs planifiés).
+
+---
+
+### 4.5 Comptes de démonstration
+
+Quatre comptes sont créés automatiquement au premier démarrage pour tester toutes les fonctionnalités :
+
+| Email | Mot de passe | Rôle | Accès |
+|---|---|---|---|
+| `super@retainiq.com` | `SuperAdmin123!` | super_admin | Total — gestion globale |
+| `admin@retainiq.com` | `Admin123!` | admin | Import données + toutes les pages |
+| `manager@retainiq.com` | `Manager123!` | manager | Analytics + campagnes + rapports |
+| `agent@retainiq.com` | `Agent123!` | agent | Dashboard + alertes + fidélité |
+
+> Pour tester le workflow complet (import CSV → prédiction), connectez-vous avec le compte `admin@retainiq.com`, importez le fichier `Telco-Customer-Churn.csv` fourni dans le dépôt, puis entraînez le modèle.
+
+---
+
+### 4.6 Commandes utilitaires
+
+**Inspecter la base de données**
+
+```bash
+# Voir le schéma complet
+sqlite3 retainiq.db ".schema"
+
+# Lister les utilisateurs
+sqlite3 retainiq.db "SELECT email, company, secteur, role FROM users;"
+
+# Voir le catalogue de récompenses
+sqlite3 retainiq.db "SELECT user_email, label, action, valeur FROM reward_primitives;"
+```
+
+**Migrer d'anciens comptes (users.json → SQLite)**
+
+```bash
+python migrate_users.py
+```
+
+**Tester la génération d'un rapport PDF**
+
+```bash
+python -c "
+import pandas as pd
+from email_reports import generate_pdf_report
+
+df = pd.DataFrame({
+    'tenure': [12, 24, 6, 48, 3],
+    'MonthlyCharges': [65.5, 89.0, 45.0, 55.0, 92.0],
+    'TotalCharges': [786, 2136, 270, 2640, 276],
+    'Churn': [0, 1, 0, 0, 1],
+    'ChurnProba': [0.25, 0.85, 0.15, 0.10, 0.91]
+})
+generate_pdf_report(df, 'Mon Entreprise', 'Télécom', 'test_report.pdf')
+print('PDF généré : test_report.pdf')
+"
+```
+
+**Tester le job de fidélité en mode standalone**
+
+```bash
+python loyalty_messages_job.py
+```
+
+**Vérifier les modèles Gemini disponibles pour votre clé API**
+
+```bash
+python test_api.py
+```
+
+**Lister les modèles utilisateurs entraînés**
+
+```bash
+ls model_*.pkl
+```
+
+---
+
+## 5. Fonctionnalités détaillées — chaque page du dashboard
+
+Le dashboard RetainIQ est organisé en **11 pages** accessibles depuis la barre latérale. La navigation est conditionnelle : les pages analytics sont verrouillées tant qu'aucun modèle n'est actif (état Blank Slate), et certaines pages sont réservées selon le rôle de l'utilisateur.
+
+---
+
+### 🏠 Page Bienvenue (Blank Slate)
+
+**Rôles :** tous | **Condition d'affichage :** aucun modèle actif pour cet utilisateur ni pour son entreprise
+
+Cette page est affichée au premier démarrage, avant tout import de données. Elle guide l'utilisateur vers la page d'import avec un parcours en trois étapes visuelles : importer → entraîner → explorer.
+
+**Ce qu'elle contient :**
+- Trois cartes explicatives : Import CSV / Entraînement IA / Déverrouillage du dashboard
+- Rappel des formats acceptés (CSV UTF-8 ou Latin-1, 5 secteurs, colonnes minimales requises)
+- Bouton principal "📤 Importer mes données maintenant" — redirige programmatiquement via `st.session_state["_nav_override"]`
+- Conseil sur la taille recommandée du dataset (500+ lignes)
+
+```python
+# Redirection programmatique vers la page d'import
+if st.button("📤 Importer mes données maintenant"):
+    st.session_state["_nav_override"] = "📤 Importer mes données"
+    st.rerun()
+```
+
+---
+
+### 🏠 Overview
+
+**Rôles :** tous | **Condition :** modèle actif
+
+Tableau de bord principal donnant une vision globale de l'état de la base clients en quatre métriques clés.
+
+**KPIs affichés :**
+
+| Métrique | Calcul |
+|---|---|
+| Total Clients | `df.shape[0]` |
+| Taux de Churn | `df['Churn'].sum() / len(df) * 100` |
+| Précision Modèle | `model.score(X_test, y_test)` |
+| Clients Urgents | `len(df[df['ChurnProba'] > 0.6])` |
+
+**Tableau des 10 premiers clients :** affiche l'identifiant client, le statut churn réel, le score de risque IA, le niveau (Élevé / Modéré / Faible) et les colonnes sectorielles détectées dynamiquement (ancienneté, charges, total cumulé, statut senior). Les libellés des colonnes s'adaptent au secteur de l'utilisateur via `SECTEUR_CONFIG`.
+
+**Export CSV :** bouton de téléchargement du dataset complet (sans `ChurnProba` ni `RiskLevel`), nommé automatiquement `RetainIQ_Dataset_[N]_clients.csv`.
+
+**Indicateur de source des données :** signale si les données affichées proviennent du dataset Telco Kaggle (démo) ou d'un modèle personnalisé importé.
+
+---
+
+### 📊 Visual Analytics
+
+**Rôles :** manager, admin, super_admin | **Condition :** modèle actif
+
+Page d'analyse exploratoire approfondie avec six visualisations Plotly et Matplotlib.
+
+**Graphiques produits :**
+
+| Visualisation | Type | Description |
+|---|---|---|
+| Customer Retention Overview | Donut Plotly | Répartition clients actifs vs churned |
+| Monthly Charges vs Churn Risk | Histogramme Plotly | Distribution des charges par statut churn |
+| Customer Tenure Analysis | Box plot Plotly | Dispersion de l'ancienneté selon le statut |
+| Top 10 Predictive Features | Bar chart Plotly | Importance des features selon `model.feature_importances_` |
+| Churn Distribution | Count plot Seaborn | Décompte brut des classes 0 et 1 |
+| Tenure vs Churn | Histogramme empilé Seaborn | Distribution de l'ancienneté par statut |
+| Feature Correlation Matrix | Heatmap Seaborn | Matrice de corrélation de toutes les features numériques |
+
+Toutes les colonnes (tenure, charges) sont détectées dynamiquement avec fallback `st.info` si absentes, garantissant le fonctionnement sur tout type de dataset.
+
+---
+
+### 🔮 AI Prediction
+
+**Rôles :** tous | **Condition :** modèle actif
+
+Permet de prédire le risque de churn d'un client fictif en saisissant manuellement ses caractéristiques. L'interface s'adapte automatiquement au dataset chargé.
+
+**Deux modes d'interface :**
+
+**Mode Telco (dataset standard)** — formulaire fixe avec les champs historiques :
+- Sliders : `tenure`, `MonthlyCharges`, `TotalCharges`
+- Selectboxes : type de contrat, service internet
+- Checkboxes : sécurité en ligne, support technique
+
+**Mode dataset custom** — formulaire généré dynamiquement depuis les features réelles du modèle :
+- Variables binaires (0/1) → `st.checkbox`
+- Ensembles discrets (≤ 10 valeurs entières) → `st.selectbox`
+- Variables continues → `st.slider` avec min/max/médiane du dataset
+- Variables catégorielles connues (`type_engagement`, `pack_service`) → selectbox propres avec encodage automatique vers les colonnes dummifiées
+
+**Résultat affiché :**
+- Jauge de risque Plotly Indicator (0–100%, colorée selon le niveau)
+- Score numérique et libellé (RISQUE ÉLEVÉ / MODÉRÉ / FAIBLE)
+- Bloc de recommandations contextuelles (rétention si > 60%, upsell si < 60%)
+
+```python
+# Alignement garanti avant prédiction
+prediction = model.predict_proba(
+    prepare_features_for_prediction(input_df, feature_names)
+)[0][1]
+```
+
+---
+
+### 🌟 Future Scenarios
+
+**Rôles :** manager, admin, super_admin | **Condition :** modèle actif
+
+Simulateur macro permettant d'évaluer l'impact d'une décision stratégique (changement tarifaire, évolution de l'ancienneté moyenne) sur l'ensemble du portefeuille clients.
+
+**Paramètres :**
+- `price_change` : variation des charges mensuelles en % (−50% à +100%)
+- `tenure_impact` : impact sur l'ancienneté moyenne en % (−50% à +50%)
+
+**Logique de simulation :**
+
+```python
+df_scenario['MonthlyCharges'] *= (1 + price_change / 100)
+df_scenario['tenure'] *= (1 + tenure_impact / 100)
+df_scenario['TotalCharges'] = df_scenario['MonthlyCharges'] * df_scenario['tenure']
+```
+
+**Résultats affichés :**
+- Risque churn actuel moyen vs risque futur moyen, avec indicateur de variation en %
+- Deux histogrammes côte-à-côte (distribution des risques actuel vs futur) via `make_subplots`
+
+---
+
+### ⚡ Simulateur What-If
+
+**Rôles :** tous | **Condition :** modèle actif
+
+Comparaison avant/après pour un client individuel. L'utilisateur configure deux états du client (situation actuelle et situation après une action commerciale) et voit l'impact sur le score de risque en temps réel.
+
+**Interface deux colonnes :**
+- Colonne gauche : "Situation ACTUELLE" — valeurs courantes du client
+- Colonne droite : "Situation APRÈS votre action" — valeurs modifiées
+
+Chaque feature est automatiquement classée par `_whatsif_spec()` :
+
+```python
+def _whatsif_spec(col):
+    n = len(vals)
+    if n <= 1:   return ("constant", valeur_fixe)
+    if binaire:  return ("binary", None)          # → st.selectbox Non/Oui
+    if discret:  return ("discrete", liste_vals)  # → st.selectbox
+    return ("continuous", (min, max, médiane))     # → st.slider
+```
+
+Les variables catégorielles connues (`type_engagement`, `pack_service`) sont regroupées en selectboxes lisibles, puis automatiquement étendues en colonnes dummifiées correspondantes avant la prédiction.
+
+**Résultat affiché :**
+- Deux jauges Plotly Indicator : score avant / score après
+- Delta central coloré (vert si amélioration, rouge si dégradation)
+- Économie mensuelle calculée si une colonne de charges est modifiée
+- Trois recommandations contextuelles générées par `get_recommendations()`
+
+---
+
+### 🚨 Alertes Clients
+
+**Rôles :** tous | **Condition :** modèle actif
+
+Liste priorisée et filtrée de tous les clients dépassant un seuil de risque configurable. C'est la page d'action quotidienne pour les équipes de rétention.
+
+**Contrôles :**
+- Slider "Seuil de risque minimum" : 30% à 90% (défaut 60%)
+- Selectbox de tri : score décroissant / charges décroissantes / ancienneté croissante
+- Filtre par motif de risque (issu du moteur de triage P75)
+
+**KPIs du groupe filtré :**
+- Nombre de clients au-dessus du seuil
+- Score moyen du groupe
+- Revenu mensuel total à risque (somme des charges mensuelles)
+
+**Tableau enrichi :** affiche les colonnes disponibles (tenure, charges, total, senior), le score de risque en %, le niveau de risque et les colonnes de triage (`Motif de Risque`, `Action Suggérée`). Les libellés des colonnes sont traduits selon le secteur via `cfg`.
+
+**Export Excel formaté :** génération d'un fichier `.xlsx` avec en-têtes colorés (#667eea) et largeurs de colonnes auto-ajustées via `xlsxwriter`. Le nom de fichier intègre le seuil et le motif sélectionné.
+
+```python
+header_fmt = workbook.add_format({
+    'bold': True, 'bg_color': '#667eea',
+    'font_color': 'white', 'border': 1
+})
+```
+
+**Envoi de rapport PDF :** bouton "Générer et envoyer le rapport PDF" qui génère un PDF ReportLab du groupe filtré et l'envoie via SendGrid à l'email saisi.
+
+**Trois actions recommandées** affichées sous forme de cartes : appel de rétention (48h), offre personnalisée, campagne email satisfaction.
+
+---
+
+### 🧠 Explainable AI (SHAP)
+
+**Rôles :** manager, admin, super_admin | **Condition :** modèle actif
+
+Page dédiée à la compréhension du modèle via SHAP (SHapley Additive exPlanations). Quatre vues complémentaires permettent d'analyser l'IA à l'échelle globale et individuelle.
+
+**Vue 1 — Importance globale des variables**
+
+Graphique à barres horizontales (Plotly) affichant la valeur SHAP absolue moyenne de chaque feature, triée par ordre décroissant d'impact. Répond à la question : *quelles variables ont le plus d'influence sur les prédictions en général ?*
+
+```python
+mean_abs_shap = np.abs(shap_df).mean().sort_values(ascending=True)
+```
+
+**Vue 2 — Impact positif vs négatif**
+
+Graphique à barres bi-directionnelles (rouge pour les facteurs augmentant le churn, vert pour les facteurs le réduisant). Répond à la question : *dans quel sens chaque variable pousse-t-elle le risque ?*
+
+**Vue 3 — Explication individuelle par client**
+
+Slider de sélection de client (0 à 100) + waterfall chart des valeurs SHAP de ce client spécifique. Chaque barre représente la contribution d'une feature à son score.
+
+En complément, une explication en **langage naturel** est générée automatiquement :
+
+```
+Facteurs qui augmentent le risque : contrat mensuel (+0.312), charges mensuelles élevées (+0.198)
+Facteurs qui réduisent le risque : ancienneté (−0.145), présence d'un partenaire (−0.089)
+```
+
+Un expander affiche le profil complet du client (4 métriques clés : ancienneté, charges, total, statut senior) avec fallback sur les 4 premières features numériques continues si les champs standards sont absents.
+
+**Vue 4 — Relation charges vs impact SHAP**
+
+Scatter plot Plotly où chaque point est un client, l'axe X représente ses charges mensuelles et l'axe Y son impact SHAP correspondant. La couleur encode le score de risque (vert → orange → rouge). Permet d'identifier visuellement à partir de quel niveau de charges les charges deviennent un facteur de risque.
+
+**Performance :** les valeurs SHAP sont calculées une seule fois et mises en cache via `@st.cache_data` pour éviter les recalculs à chaque interaction.
+
+```python
+@st.cache_data(show_spinner=False)
+def compute_shap_values(_model, _X):
+    explainer = shap.TreeExplainer(_model)
+    return explainer.shap_values(_X), explainer.expected_value
+```
+
+---
+
+### 🤖 Assistant IA
+
+**Rôles :** tous | **Condition :** modèle actif
+
+Chatbot conversationnel intégré au dashboard, propulsé par **Google Gemini 2.5 Flash**. Il est contextualisé automatiquement sur les données chargées.
+
+**Contexte injecté dans chaque requête :**
+
+```python
+system_prompt = (
+    "Tu es un expert en Data Science et fidélisation client B2B, intégré au logiciel RetainIQ."
+    f"Secteur : {secteur} | Clients analysés : {n_total} | Clients urgents : {n_urgent}"
+)
+```
+
+**Fonctionnalités :**
+- Interface `st.chat_message` avec historique de conversation persistent dans `st.session_state["chat_history"]`
+- Message d'accueil automatique avec le nombre de clients urgents au moment de la connexion
+- Quatre boutons de questions rapides prédéfinies (causes du churn, fonctionnement XGBoost, actions de rétention, nombre de clients urgents)
+- Champ de saisie libre `st.chat_input` ancré en bas de page
+- Bouton "Effacer la conversation"
+
+**Périmètre de réponse :** le prompt système contraint Gemini à ne répondre qu'aux sujets liés à la fidélisation et au churn. Les sujets hors-périmètre sont refusés.
+
+**Prérequis :** variable `GEMINI_API_KEY` définie dans `.env`.
+
+---
+
+### 📤 Importer mes données
+
+**Rôles :** admin, manager (et agents de l'entreprise en Blank Slate) | **Condition :** toujours accessible
+
+Pipeline complet d'import et d'entraînement en six étapes affichées séquentiellement dans la page. Voir la section [Workflow complet](#3-workflow-complet--de-limport-csv-à-la-prédiction-finale) pour le détail de chaque étape.
+
+**Points clés de l'interface :**
+- Expander "Pré-requis et Format du Fichier CSV" avec documentation complète du format attendu
+- Exemple de format affiché sous forme de `st.dataframe` si aucun fichier n'est déposé
+- Aperçu des données brutes avec compteurs (lignes, colonnes, valeurs manquantes)
+- Deux histogrammes Plotly des distributions (avant entraînement) pour les deux premières features numériques
+- Le bouton "Lancer l'entraînement" est désactivé si le score de qualité est < 30
+- Animation `st.balloons()` au succès de l'entraînement
+
+---
+
+### 📧 Campagnes & Rapports
+
+**Rôles :** manager, admin, super_admin | **Condition :** modèle actif
+
+Page CRM organisée en **quatre onglets** :
+
+#### Onglet 1 — Rapports Planifiés
+
+Gestion du scheduler APScheduler pour l'envoi automatique des rapports PDF hebdomadaires.
+
+**Statut en temps réel :** trois métriques — état du scheduler (actif/inactif), prochaine exécution planifiée, nombre de jobs enregistrés.
+
+**Configuration des destinataires :** champ `st.text_area` pour saisir les emails des managers séparés par des virgules. La liste est sauvegardée dans `st.session_state["report_recipients"]`.
+
+**Configuration de la planification :**
+- `st.multiselect` des jours de la semaine (lundi à dimanche)
+- `st.time_input` pour l'heure d'envoi
+- Appel à `sched.update_schedule(day_of_week, hour, minute)` pour modifier le cron sans redémarrer le scheduler
+
+**Envoi manuel immédiat :** bouton "Envoyer les rapports maintenant" qui appelle `sched.trigger_now()`, exécutant le job de rapport en dehors de sa planification.
+
+**Historique des exécutions :** tableau des 10 dernières exécutions (date, statut ✅/❌, durée en secondes, détail).
+
+#### Onglet 2 — Relance Smart Rétention
+
+Envoi d'emails de rétention personnalisés aux clients à risque, disponible en deux modes :
+
+**Mode Individuel** — cible un client précis :
+- Sélecteur de client parmi ceux avec ChurnProba > 60% (label enrichi : email + score + ancienneté + charges)
+- Pré-remplissage automatique de l'adresse email si détectée dans le dataset
+- Bouton "✨ Générer le texte avec l'IA" : appelle `gemini_draft_email()` avec le contexte du client (secteur, ancienneté, charges, score)
+- Zone de texte éditable avant envoi
+- Envoi via `send_campaign_email()` (API Brevo)
+- Enregistrement dans l'historique CRM (`st.session_state["crm_history"]`)
+
+**Mode Groupé** — cible un segment :
+- Slider de plage de score (ex: 60%–100%)
+- Slider d'ancienneté min/max
+- Filtre par type de contrat (si colonne détectée)
+- Génération IA du texte contextualisée sur le groupe (taille, secteur, filtres appliqués)
+- Envoi en boucle avec barre de progression `st.progress()` — chaque email envoyé individuellement via Brevo
+- Compteur final : envois réussis / échecs
+
+#### Onglet 3 — Occasions & Fêtes
+
+Campagnes email thématiques pour les moments clés de l'année.
+
+**Occasions prédéfinies :**
+- 🎉 Bonne Année · 🌙 Aïd Moubarak · 🌹 Fête des Mères · 👨 Fête des Pères
+- 🎄 Joyeux Noël · 🇫🇷 Fête Nationale · 🎓 Rentrée · 🛒 Black Friday
+- ✏️ Occasion personnalisée (champ libre)
+
+**Segments cibles :** Tous les clients / Risque élevé (>60%) / Risque modéré (35–60%) / Clients fidèles (<35%)
+
+Le segment est appliqué automatiquement sur le DataFrame pour extraire la liste d'emails correspondante. La taille du segment et le nombre d'emails extraits sont affichés avant l'envoi. Le texte de l'email est généré par Gemini en tenant compte de l'occasion, du secteur et de la taille du groupe.
+
+#### Onglet 4 — Historique CRM
+
+Journal de session de toutes les communications envoyées depuis le dashboard.
+
+**Colonnes :** Date · Type · Destinataire(s) · Objet · Statut (✅ Envoyé / ⚠️ N échec(s))
+
+Trois KPIs de synthèse en bas de page : total envois, nombre de campagnes, nombre de relances.
+
+> L'historique est stocké en `st.session_state` — il est perdu à la fermeture de l'onglet navigateur. Des données de démonstration pré-chargées permettent de visualiser le format dès le premier accès.
+
+---
+
+### 🏆 Programme de Fidélité
+
+**Rôles :** tous (configuration réservée admin/manager) | **Condition :** modèle actif avec ChurnProba calculé
+
+Page de gestion du programme de rétention et de récompenses. Elle s'articule autour de trois concepts : **segmentation**, **catalogue de récompenses**, et **déclenchement de campagne**.
+
+#### Segmentation automatique
+
+Dès l'ouverture, tous les clients avec `ChurnProba > 0.40` sont isolés et enrichis par `triage_risque()`. Trois niveaux de priorité sont calculés :
+
+| Priorité | Seuil | Couleur |
+|---|---|---|
+| 🔴 Critique | ChurnProba > 80% | Rouge |
+| 🟠 Urgent | 60% < ChurnProba ≤ 80% | Orange |
+| 🟡 À suivre | 40% < ChurnProba ≤ 60% | Jaune |
+
+**KPIs affichés :** nombre de clients par niveau de priorité + revenu mensuel total menacé.
+
+#### Filtres de ciblage
+
+Deux selectboxes permettent de restreindre la liste des clients ciblés :
+- Filtre par priorité (Tous / Critique / Urgent / À suivre)
+- Filtre par motif de risque (issu du moteur de triage)
+
+Le tableau résultant (max 100 clients) est triable par score décroissant et exportable en CSV.
+
+#### Catalogue de récompenses (SQLite)
+
+Les récompenses sont stockées dynamiquement dans la table `reward_primitives` de SQLite, propres à chaque utilisateur. Chaque récompense est définie par quatre primitives :
+
+| Primitive | Description | Exemple |
+|---|---|---|
+| **Action** | Verbe décrivant le geste commercial | "Offrir", "Appliquer", "Envoyer" |
+| **Cible** | Segment visé | "Clients 12+ mois à risque élevé" |
+| **Valeur** | Avantage consenti | "-20%", "1 mois gratuit", "50 points" |
+| **Durée** | Validité de l'offre | "30 jours", "3 mois" |
+
+**CRUD depuis l'UI :** formulaire de création (label + 4 primitives) et bouton de suppression par ligne. Les modifications sont persistées immédiatement dans SQLite.
+
+#### Déclenchement de campagne
+
+Sélection d'une récompense du catalogue → aperçu des détails → bouton "🚀 Déclencher la campagne".
+
+Au déclenchement, un **payload JSON structuré** est construit et envoyé via webhook HTTP POST :
 
 ```json
 {
-  "event":     "loyalty_campaign_triggered",
-  "timestamp": "2025-05-01T10:32:00",
-  "company":   "NomEntreprise",
-  "secteur":   "📱 Télécom",
+  "event": "loyalty_campaign_triggered",
+  "timestamp": "2026-05-13T10:32:00",
+  "company": "WafaTelecom",
+  "secteur": "📱 Télécom",
   "reward": {
     "id": 3, "label": "Cadeau Ancienneté",
     "action": "Offrir", "cible": "Clients 12+ mois",
@@ -98,1673 +1052,1966 @@ RetainIQ est conçu pour s'intégrer nativement à tout écosystème CRM/ERP via
   },
   "targeting": {
     "priority_filter": "🔴 Critique (>80%)",
-    "motif_filter":    "Pression tarifaire",
-    "total_clients":   12
+    "motif_filter": "Pression tarifaire",
+    "total_clients": 12
   },
   "clients_sample": [
-    {
-      "churn_proba": 0.87,
-      "priorite":    "🔴 Critique (>80%)",
-      "motif": "Pression tarifaire"
-    }
+    {"churn_proba": 0.87, "priorite": "🔴 Critique (>80%)", "motif": "Pression tarifaire"}
   ]
 }
 ```
 
-Ce *payload* standardisé permet une intégration directe avec Salesforce, HubSpot, Pipedrive ou tout système HTTP/REST sans développement intermédiaire.
+Le webhook est configurable dans le panneau de configuration (Bloc 4). Si aucune URL n'est configurée, la campagne est enregistrée localement uniquement.
+
+#### Panneau de configuration (admin/manager)
+
+Accessible via un expander réservé aux rôles admin et manager. Organisé en quatre blocs :
+
+- **Bloc 1 — Seuils :** urgence Cohorte A, ancienneté min Cohorte B, dépense minimum
+- **Bloc 2 — Valeur :** type de récompense (%, montant fixe €, en nature), valeur chiffrée
+- **Bloc 3 — Garde-fous :** budget max/mois, quota de récompenses/mois, période de carence (mois)
+- **Bloc 4 — Webhook :** URL HTTP pour l'intégration CRM/ERP externe
+
+La configuration est sauvegardée dans `loyalty_settings.json` par email utilisateur. Un bouton "Réinitialiser" remet les valeurs par défaut.
 
 ---
 
-## 1. Vue d'ensemble du projet
+### ⚙️ Panneau Admin
 
-**RetainIQ** est une plateforme web full-stack de prédiction et de rétention du churn client basée sur l'intelligence artificielle. Elle permet à des entreprises de cinq secteurs d'activité de :
+**Rôles :** manager, admin, super_admin | **Sécurité :** vérification côté serveur avec `st.stop()` si accès non autorisé
 
-- **Détecter** les clients susceptibles de partir avant qu'ils ne le fassent (modèle XGBoost personnalisé par utilisateur)
-- **Comprendre** les raisons du risque grâce à l'explainabilité SHAP
-- **Simuler** l'impact d'une action commerciale avant de la déclencher (What-If Simulator)
-- **Alerter** en temps réel sur les clients à risque élevé
-- **Fidéliser** les clients stables grâce à un programme de récompenses automatisé (NOUVEAU v2.0)
-- **Automatiser** l'envoi de rapports PDF hebdomadaires et de messages de gratitude mensuels
+Interface de gestion des utilisateurs et des accès de la plateforme.
 
-La plateforme couvre cinq secteurs métier :
+#### Tableau des utilisateurs
 
-| Secteur | Colonne cible | Colonnes clés |
-|---------|--------------|---------------|
-| 📱 Télécom | `Churn` | `tenure`, `MonthlyCharges`, `TotalCharges` |
-| 💪 Salle de Sport | `resiliation` | `visites_mois`, `abonnement_mensuel`, `anciennete_mois` |
-| 🛍️ E-commerce | `inactif` | `nb_commandes`, `panier_moyen`, `jours_inactif` |
-| 🎓 EdTech | `desinscription` | `cours_termines`, `connexions_semaine`, `anciennete_mois` |
-| ☁️ SaaS B2B | `resiliation` | `mrr`, `nb_utilisateurs`, `anciennete_mois` |
+Chaque utilisateur est affiché dans une ligne avec :
+- **Email + Entreprise + Secteur** (carte visuelle)
+- **Selectbox de rôle** — les options disponibles dépendent du rang de l'utilisateur connecté :
+  - `super_admin` → peut attribuer admin, manager, agent
+  - `admin` → peut attribuer manager, agent
+  - `manager` → ne peut créer que des agents
 
----
+**Isolation multi-tenant :** un `admin` ou `manager` ne voit que les utilisateurs de sa propre entreprise. Seul le `super_admin` voit tous les utilisateurs de la plateforme.
 
-## 2. Nouveautés de la v2.0
-
-| Fonctionnalité | Statut | Module(s) |
-|---------------|--------|-----------|
-| Programme de Fidélité complet (3 cohortes) | **NOUVEAU** | `loyalty_page.py`, `loyalty_config.py` |
-| Catalogue de récompenses par secteur (5 secteurs × 2 types) | **NOUVEAU** | `loyalty_config.py` |
-| Messages automatiques de gratitude mensuelle (Gmail SMTP) | **NOUVEAU** | `loyalty_messages_job.py` |
-| Job APScheduler fidélité (1er du mois à 10h00) | **NOUVEAU** | `scheduler.py` |
-| Panneau d'administration dynamique des récompenses | **NOUVEAU** | `loyalty_page.py` |
-| Moteur de templates personnalisables (5 balises dynamiques) | **NOUVEAU** | `loyalty_page.py` |
-| Mur des Champions avec cartes visuelles | **NOUVEAU** | `loyalty_page.py` |
-| Anniversaires de contrat automatiques (`tenure % 12 == 0`) | **NOUVEAU** | `loyalty_messages_job.py` |
-| Blank Slate (page d'accueil nouvel utilisateur) | **NOUVEAU** | `churn_prediction_dashboard.py` |
-| Simulateur What-If avec double jauge temps réel | **NOUVEAU** | `churn_prediction_dashboard.py` |
-| Page Alertes Clients avec export Excel ciblé (xlsxwriter) | **NOUVEAU** | `churn_prediction_dashboard.py` |
-| Assistant IA Chatbot contextuel | **NOUVEAU** | `churn_prediction_dashboard.py` |
-| Jauge de risque visuelle (Plotly Indicator) | **NOUVEAU** | `churn_prediction_dashboard.py` |
-| Moteur de Triage Statistique agnostique (P75) | **NOUVEAU** | `data_pipeline.py` |
-| Migration auth SHA256 → bcrypt transparente | **AMÉLIORÉ** | `auth.py`, `database.py` |
-| Navigation conditionnelle (Blank Slate vs modèle actif) | **AMÉLIORÉ** | `churn_prediction_dashboard.py` |
-| Fallback local pour rapports PDF (si SendGrid absent) | **AMÉLIORÉ** | `email_reports.py` |
-| Fuseau horaire Europe/Paris pour le scheduler | **AMÉLIORÉ** | `scheduler.py` |
-| **Catalogue de récompenses dynamique (SQLite)** — création/suppression depuis l'UI | **NOUVEAU v2.1** | `loyalty_page.py`, `database.py` |
-| **Webhook HTTP configurable** sur déclenchement de campagne (payload JSON structuré) | **NOUVEAU v2.1** | `loyalty_page.py` |
-| **Simulateur What-If agnostique au secteur** — formulaire auto-généré depuis les features réelles | **AMÉLIORÉ v2.1** | `churn_prediction_dashboard.py` |
-| **Détection cible améliorée** — `GLOBAL_TARGET_SYNONYMS` + nettoyage espaces + fallback interactif | **AMÉLIORÉ v2.1** | `data_pipeline.py` |
-| **Visualisations agnostiques** — Overview, Visual Analytics, Alertes adaptés à tout secteur | **AMÉLIORÉ v2.1** | `churn_prediction_dashboard.py` |
-| **Profil SHAP dynamique** — fallback sur 4 features numériques si champs standards absents | **AMÉLIORÉ v2.1** | `shap_explainer.py` |
-
----
-
-## 3. Architecture générale
-
-```
-churn_prediction_dashboard.py  ← Point d'entrée Streamlit (routeur de pages)
-│
-├── auth.py                    ← Authentification (login / inscription / migration)
-│   └── database.py            ← Couche SQLite (CRUD utilisateurs, sans dépendances)
-│
-├── data_pipeline.py           ← Import CSV · détection colonnes · nettoyage · XGBoost
-│                                 · triage_risque() (moteur statistique agnostique P75)
-│
-├── shap_explainer.py          ← SHAP Tree Explainer · 4 vues · explication langage naturel
-│
-├── email_reports.py           ← PDF ReportLab · envoi SendGrid · fallback local
-│
-├── loyalty_page.py            ← Page Fidélité (3 cohortes, catalogue, config, mur champions)
-│   └── loyalty_config.py      ← Catalogue récompenses · messages gratitude · seuils
-│
-├── scheduler.py               ← Singleton APScheduler (2 jobs cron)
-│   ├── weekly_report_job.py   ← Job hebdo lundi 8h — PDF + SendGrid
-│   └── loyalty_messages_job.py← Job mensuel 1er du mois 10h — Gmail SMTP
-│
-└── retainiq.db                ← Base SQLite (tables : users, reward_primitives)
-```
-
-**Flux de données principal :**
-
-```
-[Utilisateur] → auth.py → SQLite
-     ↓
-[CSV upload] → data_pipeline.py
-     ├── detect_columns()     → classification automatique des colonnes
-     ├── clean_data()         → imputation · encodage one-hot · normalisation cible
-     ├── quality_report()     → score 0-100, avertissements, recommandations
-     ├── train_custom_model() → XGBoost · sauvegarde model_[email].pkl + data_[email].csv
-     └── triage_risque()      → enrichissement Motif de Risque + Action Suggérée (P75)
-     ↓
-[Dashboard] → prédictions ChurnProba · RiskLevel · Priorité · Motif de Risque
-     ├── shap_explainer.py    → 4 vues SHAP
-     ├── loyalty_page.py      → 3 cohortes + récompenses + simulation payload JSON
-     └── email_reports.py     → PDF → SendGrid ou fallback local
-     ↓
-[APScheduler — 2 jobs]
-     ├── Lundi 8h    → weekly_report_job.py → PDF → SendGrid
-     └── 1er mois 10h → loyalty_messages_job.py → Gmail SMTP
-```
-
----
-
-## 4. Stack technique
-
-| Couche | Technologie | Version recommandée | Rôle précis |
-|--------|------------|---------------------|-------------|
-| Framework web | Streamlit | 1.35+ | Rendu UI, session_state, routing pages |
-| Machine Learning | XGBoost | 2.0+ | Classification binaire, `predict_proba()` |
-| Prétraitement | scikit-learn | 1.4+ | `train_test_split`, métriques (F1, AUC-ROC) |
-| Manipulation de données | Pandas | — | Lecture CSV, nettoyage, one-hot encoding |
-| Calcul numérique | NumPy | — | Quantiles, matrices, opérations vectorielles |
-| Explainabilité | SHAP | — | `TreeExplainer`, waterfall, valeurs Shapley |
-| Visualisation interactive | Plotly | — | Gauges, histogrammes, scatter, pie, bar |
-| Visualisation statique | Matplotlib / Seaborn | — | Corrélation, distribution (pages Analytics) |
-| Base de données | SQLite (`sqlite3` stdlib) | — | Stockage utilisateurs, WAL mode |
-| Auth / Hashing | bcrypt | — | Hash sécurisé des mots de passe + migration SHA256 |
-| Génération PDF | ReportLab | — | Rapports A4 structurés (KPIs, Top 10 clients) |
-| Export Excel avancé | xlsxwriter | — | Feuilles formatées avec en-têtes colorés, largeur auto |
-| Email rapports | SendGrid API | — | Envoi PDF hebdomadaire avec pièce jointe |
-| Email fidélité | Gmail SMTP (`smtplib`) | — | Messages de gratitude HTML/texte (SMTP_SSL 465) |
-| Scheduling | APScheduler `BackgroundScheduler` | 3.x | 2 jobs cron (lundi 8h + 1er mois 10h) |
-| Variables d'env | python-dotenv | — | Chargement `.env` (clés API, credentials SMTP) |
-
-### Dépendances déclarées (`requirements.txt`)
-
-```
-streamlit · pandas · numpy · matplotlib · seaborn
-scikit-learn · xgboost · plotly · bcrypt · shap
-apscheduler · reportlab · python-dotenv · sendgrid · xlsxwriter
-```
-
----
-
-## 5. Structure des fichiers
-
-```
-AI-Powered-Churn-Prediction-main/
-│
-├── churn_prediction_dashboard.py   # ~1050 lignes — routeur Streamlit, toutes les pages
-├── auth.py                         # Authentification, inscription, migration bcrypt
-├── database.py                     # Couche SQLite (CRUD) — aucune dépendance projet
-├── data_pipeline.py                # Pipeline ML : détection, nettoyage, entraînement, triage
-├── shap_explainer.py               # Explainabilité SHAP (4 vues + langage naturel)
-├── email_reports.py                # Génération PDF (ReportLab) + envoi SendGrid
-├── weekly_report_job.py            # Job hebdomadaire : charge modèles → PDF → email
-├── scheduler.py                    # Singleton APScheduler (2 jobs : hebdo + mensuel)
-│
-├── loyalty_page.py                 # Page Fidélité — 3 cohortes, carte champions, config
-├── loyalty_config.py               # Catalogue récompenses, messages, seuils segmentation
-├── loyalty_messages_job.py         # Job mensuel : filtrage champions → emails gratitude
-│
-├── retainiq.db                     # Base SQLite (auto-créée au premier démarrage)
-├── requirements.txt                # Dépendances Python
-├── .env                            # Variables d'environnement (non versionné)
-├── .env.example                    # Template des variables d'environnement
-├── CLAUDE.md                       # Instructions pour l'assistant IA de développement
-├── SENDGRID_SETUP.md               # Guide de configuration SendGrid
-│
-├── model_[email_safe].pkl          # Modèle XGBoost par utilisateur (généré à l'usage)
-├── data_[email_safe].csv           # Données nettoyées par utilisateur (généré à l'usage)
-├── loyalty_settings.json           # Paramètres des campagnes par utilisateur (généré)
-├── reports_archive/                # Dossier fallback PDF locaux (si SendGrid absent)
-│
-├── Telco-Customer-Churn.csv        # Dataset de démonstration (Kaggle Telco)
-├── Churn_Prediction.ipynb          # Notebook d'exploration initiale
-└── Cleaned_Data/                   # Données nettoyées pour le notebook
-```
-
----
-
-## 6. Schéma de la base de données
-
-RetainIQ utilise SQLite via `retainiq.db`. La base est initialisée automatiquement à l'import du module `database.py`.
-
-### Table `users`
-
-| Colonne | Type | Contraintes | Description |
-|---------|------|-------------|-------------|
-| `email` | TEXT | PRIMARY KEY | Email professionnel (identifiant unique) |
-| `password_hash` | TEXT | NOT NULL | Hash bcrypt (ou SHA256 pour anciens comptes) |
-| `hash_type` | TEXT | NOT NULL, DEFAULT `'bcrypt'` | Type de hash : `'bcrypt'` ou `'sha256'` |
-| `company` | TEXT | NOT NULL, DEFAULT `''` | Nom de l'entreprise |
-| `secteur` | TEXT | NOT NULL, DEFAULT `''` | Secteur d'activité (ex: `'📱 Télécom'`) |
-| `created_at` | TEXT | NOT NULL | Date de création ISO 8601 |
-
-```sql
-CREATE TABLE IF NOT EXISTS users (
-    email          TEXT PRIMARY KEY,
-    password_hash  TEXT NOT NULL,
-    hash_type      TEXT NOT NULL DEFAULT 'bcrypt',
-    company        TEXT NOT NULL DEFAULT '',
-    secteur        TEXT NOT NULL DEFAULT '',
-    created_at     TEXT NOT NULL
-);
-```
-
-### Table `reward_primitives`
-
-| Colonne | Type | Contraintes | Description |
-|---------|------|-------------|-------------|
-| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Identifiant unique auto-incrémenté |
-| `user_email` | TEXT | NOT NULL | Email de l'utilisateur propriétaire |
-| `label` | TEXT | NOT NULL | Nom personnalisé de la récompense |
-| `action` | TEXT | NOT NULL DEFAULT `''` | Verbe d'action (ex : « Offrir », « Appliquer ») |
-| `cible` | TEXT | NOT NULL DEFAULT `''` | Segment visé (ex : « Clients 12+ mois à risque ») |
-| `valeur` | TEXT | NOT NULL DEFAULT `''` | Avantage consenti (ex : « -20% », « 1 mois gratuit ») |
-| `duree` | TEXT | NOT NULL DEFAULT `''` | Durée de validité (ex : « 30 jours ») |
-| `created_at` | TEXT | NOT NULL | Date de création ISO 8601 |
-
-```sql
-CREATE TABLE IF NOT EXISTS reward_primitives (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_email  TEXT NOT NULL,
-    label       TEXT NOT NULL,
-    action      TEXT NOT NULL DEFAULT '',
-    cible       TEXT NOT NULL DEFAULT '',
-    valeur      TEXT NOT NULL DEFAULT '',
-    duree       TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL
-);
-```
-
-**Options de connexion :**
-- `PRAGMA journal_mode=WAL` — mode Write-Ahead Logging pour la concurrence
-- `row_factory = sqlite3.Row` — accès aux colonnes par nom
-
-**Fichiers de données par utilisateur (filesystem) :**
-
-| Fichier | Description |
-|---------|-------------|
-| `model_[email_safe].pkl` | Dictionnaire `{"model": XGBClassifier, "features": list}` |
-| `data_[email_safe].csv` | DataFrame nettoyé (avec colonne `Churn` normalisée) |
-| `loyalty_settings.json` | Paramètres de campagne par email d'utilisateur |
-
-L'email est transformé en nom de fichier safe via : `email.replace("@", "_at_").replace(".", "_")`
-
----
-
-## 7. Modèle de Données — Data Model
-
-Cette section décrit formellement la structure des données à chaque étape du pipeline, depuis l'entrée brute jusqu'au jeu de données enrichi en sortie.
-
-### 7.1 Structure d'entrée — CSV agnostique
-
-Le fichier CSV importé par l'utilisateur doit respecter la structure minimale suivante. Les noms de colonnes sont détectés automatiquement par heuristiques ; seule la présence d'une variable cible binaire est strictement requise.
-
-#### Colonnes obligatoires (par secteur)
-
-| Secteur | Colonne cible acceptée | Colonnes numériques requises |
-|---------|----------------------|------------------------------|
-| 📱 Télécom | `Churn`, `churn`, `resiliation` | `tenure`, `MonthlyCharges`, `TotalCharges` |
-| 💪 Salle de Sport | `resiliation`, `churn`, `depart` | `visites_mois`, `abonnement_mensuel`, `anciennete_mois` |
-| 🛍️ E-commerce | `inactif`, `churn`, `depart` | `nb_commandes`, `panier_moyen`, `jours_inactif` |
-| 🎓 EdTech | `desinscription`, `churn` | `cours_termines`, `connexions_semaine`, `anciennete_mois` |
-| ☁️ SaaS B2B | `resiliation`, `churn`, `churned` | `mrr`, `nb_utilisateurs`, `anciennete_mois` |
-
-#### Valeurs acceptées pour la variable cible
-
-| Valeur brute | Encodage | Note |
-|-------------|----------|------|
-| `Yes`, `Oui`, `1`, `True`, `churned` | `1` | Client churné |
-| `No`, `Non`, `0`, `False`, `active`, `actif` | `0` | Client actif |
-
-#### Colonnes automatiquement ignorées
-
-Toute colonne dont le nom contient l'un des mots-clés suivants est exclue du modèle :
-`id`, `date`, `nom`, `name`, `email`, `phone`, `tel` — ainsi que toute colonne catégorielle présentant plus de 20 valeurs uniques distinctes.
-
-#### Exemple de format minimal accepté
-
-```csv
-tenure,MonthlyCharges,TotalCharges,Contract,Churn
-12,65.50,786.00,Month-to-month,No
-3,89.00,267.00,Month-to-month,Yes
-48,45.00,2160.00,Two year,No
-7,92.00,644.00,Month-to-month,Yes
-36,55.00,1980.00,One year,No
-```
-
-### 7.2 Transformations appliquées par le pipeline
-
-| Étape | Transformation | Résultat |
-|-------|---------------|---------|
-| Colonnes numériques manquantes | Imputation par la médiane | Aucune valeur `NaN` résiduelle |
-| Colonnes catégorielles manquantes | Imputation par le mode | Mode de la colonne |
-| Encodage catégoriel | One-hot encoding (`pd.get_dummies`, `drop_first=True`) | Nouvelles colonnes binaires |
-| Cible textuelle | Mapping Yes/No/Oui/Non → 1/0 | Colonne `Churn` binaire entière |
-| Cible renommée | Renommage uniforme en `"Churn"` | Uniformité inter-secteurs |
-
-### 7.3 Structure enrichie en sortie
-
-Après exécution du pipeline de prédiction et du moteur de triage, le DataFrame est enrichi des colonnes suivantes :
-
-| Colonne ajoutée | Type | Plage / Valeurs | Description |
-|----------------|------|-----------------|-------------|
-| `ChurnProba` | `float64` | `[0.0 ; 1.0]` | Probabilité de churn calculée par `model.predict_proba(X)[:, 1]` |
-| `RiskLevel` | `str` | 3 niveaux | Libellé qualitatif dérivé de `ChurnProba` |
-| `Priorité` | `str` | 3 niveaux | Label de priorisation opérationnelle pour les campagnes |
-| `Motif de Risque` | `str` | 5 motifs | Cause principale identifiée par le moteur de triage statistique |
-| `Action Suggérée` | `str` | Libre | Recommandation d'action associée au motif |
-
-#### Détail des niveaux `RiskLevel`
-
-| Seuil `ChurnProba` | Valeur `RiskLevel` | Couleur interface |
-|-------------------|--------------------|-------------------|
-| `> 0.60` | `"Risque élevé"` | Rouge `#EF4444` |
-| `0.35 – 0.60` | `"Risque modéré"` | Orange `#F59E0B` |
-| `≤ 0.35` | `"Risque faible"` | Vert `#00CC96` |
-
-#### Détail des niveaux `Priorité`
-
-| Seuil `ChurnProba` | Valeur `Priorité` |
-|-------------------|--------------------|
-| `> 0.80` | `"🔴 Critique (>80%)"` |
-| `0.60 – 0.80` | `"🟠 Urgent (60-80%)"` |
-| `0.40 – 0.60` | `"🟡 À suivre (40-60%)"` |
-
-#### Catalogue des `Motif de Risque` (moteur de triage)
-
-| Motif | Conditions de déclenchement |
-|-------|-----------------------------|
-| `"Nouveau client — pression tarifaire"` | `tenure ≤ 6` **ET** `MonthlyCharges > P75` |
-| `"Absence d'engagement"` | Contrat mensuel détecté (one-hot ou colonne brute) |
-| `"Pression tarifaire"` | `MonthlyCharges > P75` du dataset complet |
-| `"Nouveau client"` | `tenure ≤ 6` uniquement |
-| `"Risque d'insatisfaction globale"` | Aucune condition spécifique vérifiée |
-
----
-
-## 8. Installation et démarrage
-
-### Prérequis
-
-- Python 3.11+
-- pip
-
-### Installation
-
-```bash
-# Cloner le dépôt
-git clone <url-du-repo>
-cd AI-Powered-Churn-Prediction-main
-
-# Créer un environnement virtuel
-python -m venv .venv
-source .venv/bin/activate     # Linux/macOS
-.venv\Scripts\activate        # Windows
-
-# Installer les dépendances
-pip install -r requirements.txt
-```
-
-### Configuration
-
-```bash
-# Copier le template d'environnement
-cp .env.example .env
-# Éditer .env avec vos clés (voir section suivante)
-```
-
-### Lancement
-
-```bash
-streamlit run churn_prediction_dashboard.py
-```
-
-L'application s'ouvre sur `http://localhost:8501`.
-
-### Commandes utilitaires
-
-```bash
-# Initialiser la base manuellement (déjà automatique)
-python -c "from database import init_db; init_db()"
-
-# Inspecter la base de données
-sqlite3 retainiq.db ".schema"
-sqlite3 retainiq.db "SELECT email, company, secteur FROM users;"
-sqlite3 retainiq.db "SELECT user_email, label, action, valeur FROM reward_primitives;"
-
-# Tester le job fidélité en standalone
-python loyalty_messages_job.py
-
-# Tester le job hebdomadaire en standalone
-python weekly_report_job.py
-
-# Migrer les anciens utilisateurs SHA256
-python migrate_users.py
-```
-
----
-
-## 9. Variables d'environnement
-
-Créer un fichier `.env` à la racine du projet :
-
-```dotenv
-# ── SendGrid (rapports PDF hebdomadaires) ─────────────────────────
-SENDGRID_API_KEY=SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SENDER_EMAIL=votre-expediteur@domaine.com
-SENDER_NAME=RetainIQ
-
-# ── Gmail SMTP (messages de fidélité mensuels) ────────────────────
-GMAIL_ADDRESS=votre-adresse@gmail.com
-GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx    # Mot de passe d'application Gmail
-```
-
-| Variable | Usage | Obligatoire |
-|----------|-------|-------------|
-| `SENDGRID_API_KEY` | Envoi des rapports PDF hebdomadaires | Non (fallback local) |
-| `SENDER_EMAIL` | Email expéditeur SendGrid | Oui si SendGrid activé |
-| `SENDER_NAME` | Nom affiché dans les emails | Non (défaut : "RetainIQ") |
-| `GMAIL_ADDRESS` | Compte Gmail pour les messages de fidélité | Non (simulation si absent) |
-| `GMAIL_APP_PASSWORD` | Mot de passe d'application Gmail (2FA requis) | Non (simulation si absent) |
-
-**Note :** Si `SENDGRID_API_KEY` est absent ou invalide, les rapports PDF sont automatiquement sauvegardés dans `reports_archive/` (fallback local). Si `GMAIL_ADDRESS` et `GMAIL_APP_PASSWORD` sont absents, les envois de fidélité sont simulés (succès fictif loggé).
-
----
-
-## 10. Workflows Fonctionnels Détaillés
-
-Cette section constitue la documentation de référence des quatre processus métier principaux de RetainIQ. Chaque workflow est décrit de manière exhaustive afin de servir de base directe à la rédaction du Cahier des Charges.
-
----
-
-### 10.1 Workflow 1 — Ingestion et Prédiction ML
-
-**Objectif :** Transformer un fichier CSV brut en prédictions de churn exploitables, avec un modèle XGBoost personnalisé par entreprise.
-
-**Modules impliqués :** `data_pipeline.py`, `churn_prediction_dashboard.py`
-
-#### Diagramme de séquence
-
-```
-[Utilisateur]        [Streamlit UI]         [data_pipeline.py]       [Filesystem]
-      │                    │                        │                      │
-      │── Upload CSV ──────►                        │                      │
-      │                    │── pd.read_csv() ──────►│                      │
-      │                    │                        │── detect_columns() ──►
-      │                    │◄── detection_report ───│                      │
-      │                    │── clean_data() ────────►│                      │
-      │                    │◄── df_clean, log ───────│                      │
-      │                    │── quality_report() ────►│                      │
-      │                    │◄── score, issues ───────│                      │
-      │◄── UI étapes 1-5 ──│                        │                      │
-      │── Clic "Entraîner" ►                        │                      │
-      │                    │── train_custom_model() ►│                      │
-      │                    │                        │── model.fit() ────────►
-      │                    │                        │── pickle.dump() ──────►model_[email].pkl
-      │                    │                        │── df.to_csv() ────────►data_[email].csv
-      │                    │◄── metrics (Acc, F1, AUC)                     │
-      │◄── Résultats + 🎈 ─│                        │                      │
-```
-
-#### Étapes détaillées
-
-**Étape 1 — Upload du fichier CSV**
-- Widget `st.file_uploader(type=["csv"])` en interface Streamlit
-- Lecture via `pd.read_csv(uploaded_file)`
-- Affichage d'un aperçu brut (10 premières lignes) + métriques (lignes, colonnes, valeurs manquantes)
-
-**Étape 2 — Détection automatique des colonnes** (`detect_columns(df, secteur)`)
-
-La détection s'effectue selon l'algorithme suivant :
-
-```
-0. Nettoyer les espaces parasites en tête/queue de tous les noms de colonnes (str.strip())
-1. Fusionner target_hints du secteur avec GLOBAL_TARGET_SYNONYMS (20+ synonymes universels)
-   → Comparaison case-insensitive : "churn", "resiliation", "exited", "attrition", etc.
-2. Si non trouvée → fallback interactif :
-   a. Lister toutes les colonnes binaires (nunique() == 2)
-   b. Si aucune → arrêt avec message d'erreur explicite
-   c. Sinon → st.selectbox() pour que l'utilisateur désigne la colonne cible
-      → renommer en "Churn" et relancer la détection
-3. Classifier les colonnes restantes :
-   a. Nom contient {id, date, nom, name, email, phone, tel} → ignorée
-   b. dtype in [int64, float64]                             → numérique
-   c. dtype == object AND nunique() <= 20                   → catégorielle
-   d. dtype == object AND nunique() > 20                    → ignorée + warning
-```
-
-**Étape 3 — Nettoyage automatique** (`clean_data(df, detection_report)`)
-
-| Opération | Méthode | Journalisé |
-|-----------|---------|------------|
-| Suppression colonnes ignorées | `df.drop(columns=ignored_cols)` | Oui |
-| Imputation numériques | `df[col].fillna(df[col].median())` | Oui — valeur médiane |
-| Imputation catégorielles | `df[col].fillna(df[col].mode()[0])` | Oui — valeur mode |
-| Encodage one-hot | `pd.get_dummies(df, columns=cat_cols, drop_first=True)` | Oui |
-| Normalisation cible | Mapping Yes/No → 1/0 via `str.lower().map(mapping)` | Oui |
-| Renommage cible | `df.rename(columns={target_col: "Churn"})` | Oui |
-
-**Étape 4 — Rapport de qualité** (`quality_report(df_raw, df_clean, detection_report)`)
-
-Le score de qualité est calculé selon une grille de pénalités :
-
-| Condition | Pénalité |
-|-----------|---------|
-| Taux de churn < 5% | −20 pts |
-| Taux de churn > 60% | −15 pts |
-| Valeurs manquantes > 20% | −20 pts |
-| Valeurs manquantes > 5% | −5 pts |
-| Dataset < 200 lignes | −30 pts |
-| Dataset < 500 lignes | −10 pts |
-| Colonne cible introuvable | −40 pts |
-
-L'entraînement est **bloqué** si `score < 30`.
-
-**Étape 5 — Visualisation pré-entraînement**
-- 2 histogrammes Plotly (`barmode="overlay"`, `opacity=0.75`) des colonnes numériques les plus représentatives, colorés par `Churn` (vert = actif, rouge = churné)
-
-**Étape 6 — Entraînement XGBoost** (`train_custom_model(df_clean, user_email)`)
+**Verrou serveur :** même si un admin tente d'attribuer le rôle `super_admin` via l'UI, une vérification côté serveur bloque l'opération :
 
 ```python
-# Gestion automatique du déséquilibre de classes
-scale_pos_weight = n_négatifs / n_positifs
+if new_role == "super_admin" and not _is_super_admin:
+    st.error("⛔ Attribution du rôle super_admin interdite.")
+```
 
+**Suppression :** bouton 🗑️ disponible sur chaque utilisateur, sauf sur le compte actuellement connecté (protection contre l'auto-suppression). La suppression efface également toutes les `reward_primitives` associées (cascade SQLite).
+
+#### Création de collaborateurs
+
+Formulaire de création de compte dans un expander "Gestion de l'équipe". L'entreprise et le secteur sont automatiquement hérités du compte de l'administrateur créateur. Les rôles assignables sont filtrés selon le rang de l'utilisateur connecté.
+
+---
+
+## 6. Moteur Machine Learning — XGBoost
+
+### 6.1 Pourquoi XGBoost ?
+
+RetainIQ utilise **XGBoost (eXtreme Gradient Boosting)** comme modèle de prédiction du churn. Ce choix repose sur plusieurs propriétés adaptées au contexte métier :
+
+| Propriété | Avantage pour RetainIQ |
+|---|---|
+| Gradient boosting | Construit des ensembles d'arbres séquentiels, chaque arbre corrigeant les erreurs du précédent |
+| Robustesse aux valeurs manquantes | Gère nativement les NaN sans imputation préalable |
+| `scale_pos_weight` | Compense le déséquilibre de classes (typique : 85% non-churners / 15% churners) |
+| Compatible SHAP TreeExplainer | Explainabilité native et très rapide |
+| Sérialisation pickle | Persistance légère des modèles entraînés par utilisateur |
+| Pas de normalisation requise | Opère directement sur les features brutes numériques et one-hot encodées |
+
+### 6.2 Principe du Gradient Boosting
+
+Le modèle final est la somme d'un ensemble d'arbres de décision faibles :
+
+```
+F(x) = F₀ + η·h₁(x) + η·h₂(x) + ... + η·hₙ(x)
+```
+
+- `F₀` : prédiction de base (constante, ex. proportion de churners)
+- `hₖ(x)` : k-ième arbre entraîné sur les **résidus** (erreurs) du modèle précédent
+- `η` : taux d'apprentissage (`learning_rate = 0.1`) — contrôle la contribution de chaque arbre
+- `n` : nombre d'arbres (`n_estimators = 100`)
+
+À chaque itération, l'algorithme minimise la fonction de perte **log-loss** (entropie croisée binaire), adaptée à la classification probabiliste.
+
+### 6.3 Configuration complète du modèle
+
+```python
 model = XGBClassifier(
-    use_label_encoder=False,
-    eval_metric="logloss",
-    random_state=42,
-    n_estimators=100,
-    max_depth=4,
-    learning_rate=0.1,
-    scale_pos_weight=scale_pos_weight,  # calculé dynamiquement
+    use_label_encoder = False,      # Désactive le warning deprecation
+    eval_metric       = "logloss",  # Fonction de perte : log-loss binaire
+    random_state      = 42,         # Reproductibilité
+    n_estimators      = 100,        # Nombre d'arbres dans l'ensemble
+    max_depth         = 4,          # Profondeur max de chaque arbre
+    learning_rate     = 0.1,        # Taux d'apprentissage η
+    scale_pos_weight  = scale_pos_weight,  # Poids classe positive (dynamique)
 )
 ```
 
-Métriques retournées : **Accuracy**, **F1-Score** (macro), **AUC-ROC** — chacune en pourcentage arrondi à 2 décimales.
+**Justification des hyperparamètres :**
 
----
+| Paramètre | Valeur | Raison |
+|---|---|---|
+| `n_estimators` | 100 | Bon équilibre performance/temps d'entraînement pour des datasets < 100k lignes |
+| `max_depth` | 4 | Limite le sur-apprentissage, force le modèle à généraliser |
+| `learning_rate` | 0.1 | Standard industriel — suffisamment lent pour ne pas sauter un minimum local |
+| `eval_metric` | logloss | Minimise l'incertitude probabiliste plutôt que l'erreur de classification brute |
+| `random_state` | 42 | Résultats reproductibles entre sessions |
 
-### 10.2 Workflow 2 — Moteur de Triage Statistique
+### 6.4 Gestion du déséquilibre de classes
 
-**Objectif :** Enrichir les clients à haut risque d'un motif de risque explicatif et d'une action suggérée, sans recourir à aucune terminologie sectorielle codée en dur.
+Les datasets churn sont structurellement déséquilibrés (souvent 5 à 20 fois plus de non-churners que de churners). Sans correction, le modèle apprend à prédire "non-churn" pour tout le monde.
 
-**Module impliqué :** `data_pipeline.py` — fonction `triage_risque(df_risque, df_full)`
-
-#### Principe d'agnosticité sectorielle
-
-Le moteur ne fait aucune hypothèse sur le secteur d'activité. Tous les seuils sont calculés **dynamiquement à partir des distributions réelles** du dataset courant :
-
-- **Seuil tarifaire** : 75e percentile des charges mensuelles (`df_full['MonthlyCharges'].quantile(0.75)`)
-- **Seuil d'ancienneté** : 6 mois (seuil universel du "nouveau client")
-- **Détection d'engagement** : présence d'une colonne `Contract` (brute ou one-hot encodée)
-
-```
-charges_p75 = df_full['MonthlyCharges'].quantile(0.75)
-```
-
-Ce calcul est effectué sur le **dataset complet** (pas uniquement les clients à risque), afin de préserver la représentativité statistique de la distribution.
-
-#### Matrice de décision du triage
-
-```
-                        Contrat mensuel ?
-                       ┌──────┬───────┐
-                       │  OUI │  NON  │
-          ┌────────────┼──────┼───────┤
-Nouveau   │  OUI       │  (1) │  (4)  │
-client    ├────────────┼──────┼───────┤
-(tenure≤6)│  NON       │  (2) │  (3)/(5)
-          └────────────┴──────┴───────┘
-                           ↑
-                  Pression tarifaire (>P75) ?
-```
-
-| Cas | Motif attribué | Action suggérée |
-|-----|---------------|-----------------|
-| **(1)** nouveau + contrat mensuel + pression tarif | `"Nouveau client — pression tarifaire"` | Offre de bienvenue + options premium à prix réduit |
-| **(2)** contrat mensuel uniquement | `"Absence d'engagement"` | Proposer un engagement long terme avec avantage tarifaire |
-| **(3)** pression tarifaire uniquement | `"Pression tarifaire"` | Audit des services souscrits + offre d'optimisation de coût |
-| **(4)** nouveau client uniquement | `"Nouveau client"` | Programme d'onboarding renforcé + contact personnalisé J+7 |
-| **(5)** aucune condition | `"Risque d'insatisfaction globale"` | Enquête de satisfaction ciblée + appel de rétention sous 48h |
-
-#### Détection du contrat mensuel (multi-format)
-
-La colonne `Contract` peut être présente sous deux formes selon le niveau de preprocessing :
+La correction est calculée **dynamiquement** à partir du ratio réel du dataset :
 
 ```python
-# Format brut (avant one-hot encoding)
-if 'Contract' in row.index:
-    contrat_mensuel = 'month' in str(row['Contract']).lower()
+# Calcul du ratio brut
+raw_weight = (y == 0).sum() / (y == 1).sum()
 
-# Format one-hot (après encoding)
-else:
-    one_yr = row.get('Contract_One_year', row.get('Contract_One year', None))
-    two_yr = row.get('Contract_Two_year', row.get('Contract_Two year', None))
-    if one_yr is not None and two_yr is not None:
-        contrat_mensuel = (one_yr == 0) and (two_yr == 0)
+# Plafonnement à 10 pour éviter les modèles trop agressifs
+scale_pos_weight = min(raw_weight, 10.0)
 ```
 
----
+**Effet :** le modèle accorde un poids `scale_pos_weight` fois plus important aux erreurs sur les churners (classe positive). Un faux négatif (churner prédit comme fidèle) est ainsi bien plus pénalisé qu'un faux positif.
 
-### 10.3 Workflow 3 — Action en Boucle Fermée
+**Pourquoi le cap à 10 ?** Au-delà, le modèle sur-pondère les churners au point de classifier presque tout le monde comme churner, dégradant la précision globale.
 
-**Objectif :** Transformer la prédiction ML en action opérationnelle concrète — ciblage croisé, sélection de récompense, simulation du déclenchement API et validation des garde-fous budgétaires.
-
-**Modules impliqués :** `loyalty_page.py`, `loyalty_config.py`
-
-#### Phase 1 — Enrichissement et filtrage des clients à risque
-
-```
-df_complet
-    │
-    ├── Filtre ChurnProba > 0.40 → clients_risque_raw
-    │
-    ├── triage_risque(clients_risque_raw, df_complet)
-    │       → ajout colonnes : Motif de Risque · Action Suggérée
-    │
-    └── Calcul colonne Priorité :
-            ChurnProba > 0.80 → 🔴 Critique (>80%)
-            ChurnProba > 0.60 → 🟠 Urgent (60-80%)
-            else              → 🟡 À suivre (40-60%)
-```
-
-#### Phase 2 — Ciblage croisé Priorité × Motif de Risque
-
-L'interface expose deux filtres cumulatifs permettant un ciblage précis :
-
-```
-Filtre 1 : Priorité    ∈ {Tous | 🔴 Critique | 🟠 Urgent | 🟡 À suivre}
-Filtre 2 : Motif       ∈ {Tous les motifs | [motifs détectés dynamiquement]}
-                                                ↓
-                              df_filtre = clients_enrichis
-                                  .query(priorité)
-                                  .query(motif)
-```
-
-Le résultat est affiché dans un tableau trié par score décroissant, limité aux 100 premiers clients, avec export CSV immédiat.
-
-#### Phase 3 — Simulation du déclenchement API-First
-
-Avant tout déclenchement, le système calcule dynamiquement le **Total Cumulé** de la campagne selon le type de récompense configuré :
+### 6.5 Split et validation
 
 ```python
-# Calcul du coût total estimé (extrait de loyalty_page.py)
-if reward_type == "Pourcentage %":
-    charges_moy   = df_filtre['MonthlyCharges'].clip(lower=0).mean()
-    cout_unitaire = charges_moy * reward_value / 100.0
-    total_cumule  = cout_unitaire * nb_filtres
-
-elif reward_type == "Montant fixe €":
-    cout_unitaire = reward_value
-    total_cumule  = reward_value * nb_filtres
-
-else:  # En nature
-    total_cumule  = None   # Coût monétaire non quantifiable
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
 ```
 
-Le **payload JSON** réellement envoyé au webhook configuré est structuré comme suit :
+- **Ratio 80/20** : standard industriel pour datasets < 50k lignes
+- **`stratify=y`** : garantit que la proportion churners/non-churners est identique dans le train set et le test set — indispensable sur données déséquilibrées
 
-```json
+### 6.6 Métriques d'évaluation
+
+Trois métriques sont calculées et affichées après l'entraînement :
+
+| Métrique | Formule | Interprétation |
+|---|---|---|
+| **Accuracy** | `(VP + VN) / total` | % de prédictions correctes (trompeuse si déséquilibre) |
+| **F1-Score** | `2 × (Précision × Rappel) / (Précision + Rappel)` | Équilibre entre faux positifs et faux négatifs |
+| **AUC-ROC** | Aire sous la courbe ROC | Capacité discriminante entre churners et non-churners |
+
+**Référence d'interprétation AUC-ROC :**
+
+| AUC | Qualité |
+|---|---|
+| 0.50–0.60 | Aléatoire (inutilisable) |
+| 0.60–0.70 | Faible |
+| 0.70–0.80 | Acceptable |
+| 0.80–0.90 | Bon |
+| 0.90–1.00 | Excellent |
+
+### 6.7 Persistance et architecture multi-tenant
+
+Après chaque entraînement, le modèle est sérialisé en deux endroits :
+
+```python
+# Modèle personnel — uniquement accessible à cet utilisateur
+model_path = f"model_{email_safe}.pkl"
+pickle.dump(model, open(model_path, "wb"))
+
+# Modèle entreprise — partagé avec tous les agents de la même entreprise
+os.makedirs("tenant_data", exist_ok=True)
+tenant_path = f"tenant_data/{company_safe}_model.pkl"
+pickle.dump(model, open(tenant_path, "wb"))
+```
+
+**Payload sérialisé dans le fichier `.pkl` :**
+
+```python
 {
-  "event":     "loyalty_campaign_triggered",
-  "timestamp": "2025-05-01T10:32:00",
-  "company":   "Entreprise XYZ",
-  "secteur":   "📱 Télécom",
-  "reward": {
-    "id":     3,
-    "label":  "Cadeau Ancienneté",
-    "action": "Offrir",
-    "cible":  "Clients 12+ mois à risque",
-    "valeur": "1 mois gratuit",
-    "duree":  "30 jours"
-  },
-  "targeting": {
-    "priority_filter": "🔴 Critique (>80%)",
-    "motif_filter":    "Pression tarifaire",
-    "total_clients":   12
-  },
-  "clients_sample": [
-    {"churn_proba": 0.9142, "priorite": "🔴 Critique (>80%)", "motif": "Pression tarifaire"}
-  ]
+    "model":         <XGBClassifier entraîné>,
+    "feature_names": ["tenure", "MonthlyCharges", ...],  # noms exacts des colonnes
+    "target_col":    "Churn",
+    "secteur":       "📱 Télécom",
+    "trained_at":    "2026-05-13T10:32:00",
+    "n_samples":     7043,
+    "metrics": {
+        "accuracy": 0.82,
+        "f1":       0.67,
+        "auc":      0.85
+    }
 }
 ```
 
-Le webhook est configuré depuis le panneau admin (Bloc 4 — Webhook). Si l'URL est vide ou invalide, le déclenchement de campagne reste fonctionnel mais sans appel réseau.
-
-#### Phase 4 — Validation et déclenchement
+**Chaîne de fallback lors du chargement :**
 
 ```
-Total Cumulé calculé
-        │
-        ├── total_cumule > budget_max ?
-        │       OUI → Warning + bouton DÉSACTIVÉ
-        │       NON → Bouton actif
-        │
-        ├── nb_filtres == 0 ?
-        │       OUI → Info contextuelle + bouton DÉSACTIVÉ
-        │       NON → continuer
-        │
-        └── Clic confirmé → st.success() + st.balloons()
-                            (webhook HTTP à brancher en production)
+load_user_model(email)
+  ↓ (modèle personnel introuvable)
+load_tenant_model(company)
+  ↓ (modèle entreprise introuvable)
+Chargement du dataset Telco Kaggle (démo)
+  ↓ Entraînement d'un modèle de démonstration
+```
+
+### 6.8 Alignement des features avant prédiction
+
+La fonction `prepare_features_for_prediction()` est appelée avant **chaque** prédiction (page AI Prediction, What-If, Alertes) pour garantir l'alignement parfait entre les colonnes d'entraînement et celles de la prédiction :
+
+```python
+def prepare_features_for_prediction(df: pd.DataFrame, feature_names: list) -> pd.DataFrame:
+    return df.reindex(columns=feature_names, fill_value=0)
+```
+
+**Pourquoi c'est critique :**
+- `df.reindex()` ajoute les colonnes manquantes avec la valeur 0 (ex. colonnes one-hot absentes)
+- `df.reindex()` supprime les colonnes supplémentaires non vues à l'entraînement
+- L'ordre des colonnes est garanti identique à `feature_names`
+- Sans cette fonction, XGBoost lirait silencieusement les mauvaises features et produirait des scores erronés
+
+---
+
+## 7. Structure des données CSV
+
+### 7.1 Règles de format
+
+| Règle | Détail |
+|---|---|
+| **Format** | CSV standard (séparateur virgule `,` ou point-virgule `;` auto-détecté) |
+| **Encodage** | UTF-8 (priorité) ou Latin-1 (fallback automatique) |
+| **Taille recommandée** | 500 lignes minimum pour un entraînement fiable |
+| **Taille maximale** | Pas de limite stricte — dépend de la RAM disponible |
+| **En-têtes** | Obligatoires en première ligne |
+| **Espaces** | Les espaces en début/fin de nom de colonne sont supprimés automatiquement |
+| **Casse** | La détection des colonnes est insensible à la casse |
+
+### 7.2 Colonnes par secteur
+
+#### 📱 Télécom
+
+| Colonne | Type | Exemple | Rôle |
+|---|---|---|---|
+| `tenure` | int | 24 | Ancienneté en mois — feature ML |
+| `MonthlyCharges` | float | 65.50 | Charges mensuelles — feature ML |
+| `TotalCharges` | float | 1572.00 | Total cumulé — feature ML |
+| `Churn` | int (0/1) | 0 | Variable cible |
+| `Contract` | str | "Month-to-month" | Feature ML (one-hot encodée) |
+| `InternetService` | str | "Fiber optic" | Feature ML (one-hot encodée) |
+| `customerID` | str | "7590-VHVEG" | Colonne CRM (exclue du ML) |
+| `gender` | str | "Male" | Colonne CRM (exclue du ML) |
+
+#### 🏋️ Salle de Sport
+
+| Colonne | Type | Exemple |
+|---|---|---|
+| `mois_abonnement` | int | 8 |
+| `frais_mensuel` | float | 39.90 |
+| `nb_seances_mois` | int | 12 |
+| `type_abonnement` | str | "Annuel" |
+| `resiliation` | int (0/1) | 1 |
+
+#### 🛒 E-commerce
+
+| Colonne | Type | Exemple |
+|---|---|---|
+| `jours_depuis_inscription` | int | 180 |
+| `panier_moyen` | float | 45.00 |
+| `nb_commandes` | int | 7 |
+| `taux_retour` | float | 0.15 |
+| `abandon` | int (0/1) | 0 |
+
+#### 🎓 EdTech
+
+| Colonne | Type | Exemple |
+|---|---|---|
+| `semaines_actif` | int | 12 |
+| `modules_completes` | int | 4 |
+| `taux_completion` | float | 0.67 |
+| `abandon_cours` | int (0/1) | 1 |
+
+#### 💼 SaaS B2B
+
+| Colonne | Type | Exemple |
+|---|---|---|
+| `mois_contrat` | int | 18 |
+| `mrr` | float | 299.00 |
+| `nb_utilisateurs` | int | 12 |
+| `tickets_support` | int | 3 |
+| `churn` | int (0/1) | 0 |
+
+### 7.3 Variable cible — règles et encodage
+
+La variable cible (churn/résiliation) doit être **binaire** :
+
+| Valeur acceptée | Encodage appliqué |
+|---|---|
+| `1`, `"Yes"`, `"Oui"`, `"True"`, `"true"` | → `1` (churner) |
+| `0`, `"No"`, `"Non"`, `"False"`, `"false"` | → `0` (fidèle) |
+| Toute autre valeur | → Ligne supprimée par `clean_data()` |
+
+**Détection automatique de la colonne cible :**
+
+La fonction `detect_columns()` cherche d'abord dans une liste de **synonymes globaux** (20+ termes) puis dans des `target_hints` spécifiques au secteur :
+
+```python
+GLOBAL_TARGET_SYNONYMS = [
+    "churn", "attrition", "desabonnement", "résiliation", "resiliation",
+    "abandon", "depart", "départ", "inactif", "churned", "is_churn",
+    "has_churned", "target", "label", "y", "sortie", "fin_contrat",
+    "non_renouvellement", "rupture", "departure", "dropout"
+]
+```
+
+Si aucune colonne correspondante n'est trouvée, l'interface propose un `st.selectbox` parmi toutes les colonnes binaires disponibles.
+
+### 7.4 Colonnes CRM — identification et séparation
+
+Les colonnes CRM (identifiants et données personnelles) sont **exclues du ML** avant l'entraînement et **réintégrées après** dans le DataFrame de sortie :
+
+```python
+CRM_COLUMN_SYNONYMS = [
+    "customerid", "client_id", "id_client", "userid", "user_id",
+    "email", "nom", "prenom", "nom_client", "name", "telephone",
+    "phone", "adresse", "address", "gender", "seniorcitizen"
+]
+```
+
+### 7.5 DataFrame enrichi en sortie
+
+Après entraînement et prédiction, le DataFrame est enrichi de deux colonnes calculées :
+
+| Colonne ajoutée | Type | Description |
+|---|---|---|
+| `ChurnProba` | float (0.0–1.0) | Score de risque de churn prédit par le modèle |
+| `RiskLevel` | str | Libellé du niveau : "Élevé" (>60%) / "Modéré" (30–60%) / "Faible" (<30%) |
+
+Et de deux colonnes issues du **moteur de triage P75** :
+
+| Colonne ajoutée | Type | Description |
+|---|---|---|
+| `Motif de Risque` | str | Cause principale identifiée (ex. "Pression tarifaire") |
+| `Action Suggérée` | str | Recommandation commerciale associée |
+
+**Moteur de triage — logique P75 :**
+
+```python
+def triage_risque(df, charges_col, tenure_col):
+    p75_charges = df[charges_col].quantile(0.75)
+    p75_tenure  = df[tenure_col].quantile(0.75)
+
+    if charges > p75_charges and tenure < p75_tenure:
+        motif  = "Pression tarifaire"
+        action = "Proposer un forfait adapté ou une remise fidélité"
+    elif tenure < p75_tenure:
+        motif  = "Faible engagement initial"
+        action = "Programme d'onboarding renforcé"
+    elif charges > p75_charges:
+        motif  = "Charges élevées"
+        action = "Audit de consommation + offre groupée"
+    else:
+        motif  = "Risque comportemental"
+        action = "Enquête satisfaction + suivi personnalisé"
 ```
 
 ---
 
-### 10.4 Workflow 4 — Automatisation et Gouvernance
+## 8. Système de rôles RBAC
 
-**Objectif :** Assurer l'exécution autonome et planifiée des tâches récurrentes (rapports, fidélité), la traçabilité des envois, et la gouvernance des exports de données.
+### 8.1 Hiérarchie des rôles
 
-**Modules impliqués :** `scheduler.py`, `weekly_report_job.py`, `loyalty_messages_job.py`, `churn_prediction_dashboard.py`
+RetainIQ implémente un contrôle d'accès basé sur les rôles (RBAC) à **quatre niveaux** :
 
-#### 4.1 Planification CRON (APScheduler)
-
-Le scheduler est un **singleton thread-safe** initialisé une seule fois par processus Python. Il persiste entre tous les reruns Streamlit grâce au chargement unique des modules Python.
-
-```python
-# scheduler.py — pattern singleton
-_scheduler = None
-_lock = threading.Lock()
-
-def start_scheduler(day_of_week="mon", hour=8, minute=0):
-    global _scheduler
-    with _lock:
-        if _scheduler is not None and _scheduler.running:
-            return _scheduler
-        _scheduler = BackgroundScheduler(timezone="Europe/Paris")
-        _scheduler.add_job(
-            func=_run_weekly_job,
-            trigger="cron",
-            day_of_week=day_of_week,
-            hour=hour, minute=minute,
-            id="weekly_report",
-            misfire_grace_time=3600,
-            replace_existing=True,
-        )
-        _scheduler.add_job(
-            func=send_loyalty_messages,
-            trigger="cron",
-            day=1, hour=10, minute=0,
-            id="loyalty_messages",
-            misfire_grace_time=3600,
-            replace_existing=True,
-        )
-        _scheduler.start()
-    return _scheduler
+```
+super_admin
+    └── admin
+            └── manager
+                    └── agent
 ```
 
-Les deux jobs enregistrés :
+| Rôle | Périmètre typique | Profil utilisateur |
+|---|---|---|
+| `super_admin` | Toute la plateforme, tous les tenants | Équipe RetainIQ (support interne) |
+| `admin` | Tout son tenant (entreprise) | Responsable IT ou Data de l'entreprise cliente |
+| `manager` | Analytics, campagnes, rapports | Chef de projet CRM ou responsable rétention |
+| `agent` | Dashboard opérationnel, alertes, fidélité | Commercial, conseiller clientèle |
 
-| ID Job | Déclencheur CRON | Fuseau | Tolérance misfire |
-|--------|-----------------|--------|------------------|
-| `weekly_report` | Lundi à 08:00 | Europe/Paris | 3 600 s (1 heure) |
-| `loyalty_messages` | 1er du mois à 10:00 | Europe/Paris | 3 600 s (1 heure) |
+### 8.2 Matrice des permissions
 
-**Initialisation dans le dashboard** (une seule fois par session Streamlit) :
+| Fonctionnalité | agent | manager | admin | super_admin |
+|---|---|---|---|---|
+| Page Bienvenue | ✅ | ✅ | ✅ | ✅ |
+| Overview (Dashboard) | ✅ | ✅ | ✅ | ✅ |
+| AI Prediction | ✅ | ✅ | ✅ | ✅ |
+| Simulateur What-If | ✅ | ✅ | ✅ | ✅ |
+| Alertes Clients | ✅ | ✅ | ✅ | ✅ |
+| Assistant IA | ✅ | ✅ | ✅ | ✅ |
+| Programme Fidélité (lecture) | ✅ | ✅ | ✅ | ✅ |
+| Visual Analytics | ❌ | ✅ | ✅ | ✅ |
+| Future Scenarios | ❌ | ✅ | ✅ | ✅ |
+| Explainable AI (SHAP) | ❌ | ✅ | ✅ | ✅ |
+| Campagnes & Rapports | ❌ | ✅ | ✅ | ✅ |
+| Fidélité — configuration | ❌ | ✅ | ✅ | ✅ |
+| Importer des données | ❌ | ✅ | ✅ | ✅ |
+| Panneau Admin | ❌ | ✅ | ✅ | ✅ |
+| Créer des comptes | ❌ | agents seul. | manager/agent | tous sauf super_admin |
+| Modifier les rôles | ❌ | agents seul. | manager/agent | tous |
+| Supprimer des utilisateurs | ❌ | ❌ | ✅ (son tenant) | ✅ (global) |
+| Voir tous les tenants | ❌ | ❌ | ❌ | ✅ |
+| Attribuer rôle super_admin | ❌ | ❌ | ❌ | ✅ |
+
+### 8.3 Implémentation Python
+
+Les permissions sont calculées **une seule fois** au chargement de la page, à partir du rôle stocké dans `st.session_state` :
 
 ```python
+user_role = st.session_state.get("user_role", "agent")
+
+_is_super_admin      = user_role == "super_admin"
+_is_admin            = user_role in ("admin", "super_admin")
+_is_manager_or_admin = user_role in ("manager", "admin", "super_admin")
+```
+
+**Construction conditionnelle du menu :**
+
+```python
+pages = ["🏠 Overview", "🔮 AI Prediction", "⚡ Simulateur What-If",
+         "🚨 Alertes Clients", "🤖 Assistant IA", "🏆 Programme de Fidélité"]
+
+if _is_manager_or_admin:
+    pages += ["📊 Visual Analytics", "🌟 Future Scenarios",
+              "🧠 Explainable AI (SHAP)", "📧 Campagnes & Rapports",
+              "📤 Importer mes données", "⚙️ Panneau Admin"]
+```
+
+**Verrou côté serveur (pas uniquement côté UI) :**
+
+```python
+# Dans show_admin_page()
+if not _is_manager_or_admin:
+    st.error("⛔ Accès refusé — Vous n'avez pas les droits pour accéder à cette page.")
+    st.stop()  # Arrêt immédiat du rendu Streamlit — aucun contenu affiché
+```
+
+> **`st.stop()`** est un arrêt dur : Streamlit n'exécute aucune ligne de code après cet appel. Contrairement à un simple masquage CSS, il est impossible à contourner par manipulation du DOM.
+
+**Verrou anti-escalade de privilèges :**
+
+```python
+# Un admin ne peut pas attribuer super_admin à un autre utilisateur
+if new_role == "super_admin" and not _is_super_admin:
+    st.error("⛔ Attribution du rôle super_admin interdite.")
+    # Pas de st.stop() ici — l'UI reste accessible, l'opération est simplement refusée
+```
+
+### 8.4 Isolation multi-tenant
+
+Les admins et managers ne voient que les utilisateurs de leur propre entreprise. L'isolation est appliquée au niveau de la requête SQLite :
+
+```python
+if _is_super_admin:
+    all_users = get_all_users()           # Tous les utilisateurs de la plateforme
+else:
+    all_users = get_users_by_company(     # Uniquement le tenant de l'utilisateur connecté
+        st.session_state["user_company"]
+    )
+```
+
+**Isolation des modèles :** chaque utilisateur ne charge que son modèle personnel (`model_[email].pkl`) ou le modèle de son entreprise (`tenant_data/[company]_model.pkl`). Aucun accès cross-tenant n'est possible.
+
+### 8.5 Flux de création de compte et attribution de rôle
+
+```
+Nouvel utilisateur s'inscrit via le formulaire public
+    → Rôle assigné par défaut : "admin"
+    → L'entreprise et le secteur sont définis à la création
+
+Admin crée un collaborateur depuis le Panneau Admin
+    → Hérite de l'entreprise et du secteur de l'admin créateur
+    → Rôle assignable : "manager" ou "agent" (jamais "admin" ni "super_admin")
+
+Manager crée un agent
+    → Hérite de l'entreprise et du secteur du manager
+    → Rôle assignable : "agent" uniquement
+```
+
+### 8.6 Comptes de démonstration
+
+| Email | Rôle | Badge couleur | Accès |
+|---|---|---|---|
+| `super@retainiq.com` | super_admin | 🟣 Violet | Global — tous les tenants |
+| `admin@retainiq.com` | admin | 🔵 Bleu | Son tenant complet |
+| `manager@retainiq.com` | manager | 🟢 Vert | Analytics + campagnes |
+| `agent@retainiq.com` | agent | 🟡 Jaune | Dashboard opérationnel |
+
+---
+
+## 9. APIs et automatisations
+
+### 9.1 Vue d'ensemble des intégrations externes
+
+RetainIQ s'appuie sur quatre services tiers pour ses fonctionnalités asynchrones :
+
+| Service | Usage | Déclencheur | Fichier |
+|---|---|---|---|
+| **Google Gemini 2.5 Flash** | Chatbot + rédaction emails | Interactif (utilisateur) | `churn_prediction_dashboard.py` |
+| **SendGrid** | Rapports PDF hebdomadaires | Automatique (lundi 8h) | `email_reports.py` + `weekly_report_job.py` |
+| **Brevo API v3** | Campagnes email de rétention | Manuel (bouton) | `email_service.py` |
+| **Gmail SMTP** | Messages de gratitude mensuels | Automatique (1er du mois 10h) | `loyalty_messages_job.py` |
+
+---
+
+### 9.2 Google Gemini 2.5 Flash
+
+**Usage 1 — Chatbot IA (Assistant IA page)**
+
+```python
+import google.generativeai as genai
+
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model_gemini = genai.GenerativeModel("gemini-2.5-flash")
+
+system_prompt = (
+    "Tu es un expert en Data Science et fidélisation client B2B, intégré au logiciel RetainIQ. "
+    f"Secteur : {secteur} | Clients analysés : {n_total} | Clients urgents : {n_urgent}. "
+    "Réponds uniquement aux questions liées au churn et à la fidélisation."
+)
+
+response = model_gemini.generate_content(
+    f"{system_prompt}\n\nQuestion : {user_message}"
+)
+reply = response.text
+```
+
+**Usage 2 — Rédaction d'email IA (Campagnes & Rapports)**
+
+```python
+def gemini_draft_email(client_context: dict, secteur: str) -> str:
+    prompt = (
+        f"Rédige un email de rétention personnalisé pour un client {secteur}. "
+        f"Ancienneté : {client_context['tenure']} mois. "
+        f"Score de risque : {client_context['churn_proba']:.0%}. "
+        f"Charges mensuelles : {client_context['monthly_charges']:.2f}€. "
+        "Ton : professionnel et empathique. Longueur : 3 paragraphes max."
+    )
+    response = model_gemini.generate_content(prompt)
+    return response.text
+```
+
+**Comportement si `GEMINI_API_KEY` est absent :** un message `st.warning` informe l'utilisateur, les champs de saisie et les boutons sont désactivés, l'application reste fonctionnelle.
+
+---
+
+### 9.3 SendGrid — Rapports PDF hebdomadaires
+
+**Flux complet :**
+
+```
+APScheduler (lundi 8h)
+    → weekly_report_job.py : _run_weekly_job()
+        → Pour chaque utilisateur : load_user_model(email)
+            → generate_pdf_report(df, company, secteur, path)   ← ReportLab
+                → send_pdf_via_sendgrid(pdf_path, recipients)   ← SendGrid API
+```
+
+**Génération PDF — `generate_pdf_report()` :**
+
+```python
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+
+doc = SimpleDocTemplate(output_path, pagesize=A4)
+story = []
+
+# En-tête avec logo et titre
+story.append(Paragraph(f"Rapport RetainIQ — {company}", title_style))
+story.append(Paragraph(f"Secteur : {secteur} | Généré le {today}", subtitle_style))
+
+# Table KPIs (4 colonnes)
+kpi_data = [
+    ["Total Clients", "Taux de Churn", "Précision Modèle", "Clients Urgents"],
+    [str(n_total), f"{churn_rate:.1f}%", f"{accuracy:.1f}%", str(n_urgent)]
+]
+story.append(Table(kpi_data, style=kpi_style))
+
+# Top 10 clients à risque
+story.append(Table(top10_data, style=client_style))
+
+# Recommandations sectorielles
+story.append(Paragraph("Recommandations", heading_style))
+for rec in recommendations:
+    story.append(Paragraph(f"• {rec}", body_style))
+
+doc.build(story)
+```
+
+**Envoi via SendGrid avec triple fallback :**
+
+```python
+def send_pdf_via_sendgrid(pdf_path: str, recipients: list[str]) -> bool:
+    api_key = os.getenv("SENDGRID_API_KEY")
+    if not api_key:
+        # Fallback 1 : clé absente → archivage local
+        _archive_pdf_locally(pdf_path)
+        return False
+
+    try:
+        with open(pdf_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode()
+
+        message = Mail(
+            from_email = Email(os.getenv("SENDER_EMAIL"), os.getenv("SENDER_NAME")),
+            to_emails  = recipients,
+            subject    = f"Rapport RetainIQ — {today}",
+            html_content = "<p>Votre rapport hebdomadaire RetainIQ est en pièce jointe.</p>"
+        )
+        message.attachment = Attachment(
+            FileContent(encoded), FileName("rapport_retainiq.pdf"),
+            FileType("application/pdf"), Disposition("attachment")
+        )
+        sg = SendGridAPIClient(api_key)
+        response = sg.client.mail.send.post(request_body=message.get())
+
+        if response.status_code not in (200, 202):
+            # Fallback 2 : erreur HTTP → archivage local
+            _archive_pdf_locally(pdf_path)
+            return False
+        return True
+
+    except Exception:
+        # Fallback 3 : exception réseau → archivage local dans reports_archive/
+        _archive_pdf_locally(pdf_path)
+        return False
+```
+
+---
+
+### 9.4 Brevo API v3 — Campagnes de rétention
+
+**Envoi d'un email individuel ou groupé :**
+
+```python
+import requests
+
+BREVO_URL = "https://api.brevo.com/v3/smtp/email"
+
+def send_campaign_email(to_email: str, subject: str, html_content: str) -> tuple[bool, str]:
+    headers = {
+        "accept":       "application/json",
+        "content-type": "application/json",
+        "api-key":      os.getenv("BREVO_API_KEY"),
+    }
+    payload = {
+        "sender":      {"name": "RetainIQ", "email": os.getenv("FROM_EMAIL")},
+        "to":          [{"email": to_email}],
+        "subject":     subject,
+        "htmlContent": html_content,
+    }
+    try:
+        r = requests.post(BREVO_URL, json=payload, headers=headers, timeout=10)
+        if r.status_code in (200, 201):
+            return True, "Envoyé"
+        return False, f"Erreur HTTP {r.status_code} : {r.text[:200]}"
+    except requests.RequestException as e:
+        return False, f"Erreur réseau : {e}"
+```
+
+**Mode envoi groupé :**
+
+```python
+success_count = 0
+for i, row in segment_df.iterrows():
+    email_addr = row.get("email", "")
+    if not email_addr:
+        continue
+    ok, msg = send_campaign_email(email_addr, subject, html_body)
+    if ok:
+        success_count += 1
+    progress_bar.progress((i + 1) / total)
+
+st.success(f"{success_count}/{total} emails envoyés avec succès.")
+```
+
+---
+
+### 9.5 Gmail SMTP — Messages de gratitude mensuels
+
+Déclenché automatiquement le **1er de chaque mois à 10h** par le scheduler APScheduler.
+
+**Logique de sélection des destinataires :**
+
+```python
+# Filtrer les champions : ChurnProba < 20% ET ancienneté ≥ 12 mois
+champions = df[(df["ChurnProba"] < 0.20) & (df["tenure"] >= 12)]
+
+for _, client in champions.iterrows():
+    # Anniversaire d'abonnement (multiple de 12 mois)
+    if int(client["tenure"]) % 12 == 0:
+        template = GRATITUDE_MESSAGES[secteur]["anniversaire"]
+        subject  = f"Joyeux anniversaire chez nous — {int(client['tenure'])} mois ensemble !"
+    else:
+        template = GRATITUDE_MESSAGES[secteur]["mensuel"]
+        subject  = "Merci pour votre fidélité"
+
+    body = template.format(
+        tenure = int(client["tenure"]),
+        prenom = client.get("prenom", "cher client"),
+    )
+    _send_gmail(to_email, subject, body)
+```
+
+**Envoi SMTP :**
+
+```python
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+def _send_gmail(to_email: str, subject: str, body: str):
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = os.getenv("GMAIL_ADDRESS")
+    msg["To"]      = to_email
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(os.getenv("GMAIL_ADDRESS"), os.getenv("GMAIL_APP_PASSWORD"))
+        server.sendmail(msg["From"], [to_email], msg.as_string())
+```
+
+---
+
+### 9.6 APScheduler — Jobs planifiés
+
+**Initialisation du scheduler (singleton) :**
+
+```python
+# scheduler.py — exécuté une seule fois par processus Python
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+
+_scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Paris"))
+
+def start_scheduler():
+    if not _scheduler.running:
+        _scheduler.add_job(
+            func           = _run_weekly_job,
+            trigger        = CronTrigger(day_of_week="mon", hour=8, minute=0),
+            id             = "weekly_report",
+            misfire_grace_time = 3600,   # Tolère jusqu'à 1h de retard
+            replace_existing   = True,
+        )
+        _scheduler.add_job(
+            func    = _run_loyalty_job,
+            trigger = CronTrigger(day=1, hour=10, minute=0),
+            id      = "loyalty_messages",
+            misfire_grace_time = 3600,
+            replace_existing   = True,
+        )
+        _scheduler.start()
+```
+
+**Initialisation dans Streamlit :**
+
+```python
+# churn_prediction_dashboard.py — au premier chargement uniquement
 if not st.session_state.get("_scheduler_started"):
     sched.start_scheduler()
     st.session_state["_scheduler_started"] = True
 ```
 
-#### 4.2 Gestion des destinataires via `session_state`
+> **Pourquoi le flag `_scheduler_started` ?** Streamlit réexécute tout le script à chaque interaction utilisateur. Sans le flag, `start_scheduler()` serait appelé à chaque clic, créant des schedulers dupliqués.
 
-L'email de l'utilisateur connecté est persisté dans `st.session_state["user_email"]` dès la connexion. Il est utilisé comme valeur pré-remplie pour tous les envois manuels depuis le dashboard :
-
-```python
-# Page Alertes Clients — envoi manuel de rapport
-recipient_email = st.text_input(
-    "Email destinataire",
-    value=st.session_state.get("user_email", ""),  # pré-rempli
-    key="weekly_report_email"
-)
-```
-
-Ce mécanisme garantit que l'utilisateur n'a jamais à ressaisir son email pour des actions répétées, tout en conservant la possibilité de modifier le destinataire à la volée.
-
-#### 4.3 Export Excel avancé avec xlsxwriter
-
-L'export des alertes clients utilise `xlsxwriter` (via `pd.ExcelWriter`) pour produire un fichier `.xlsx` formaté professionnellement :
+**Déclenchement manuel depuis l'UI :**
 
 ```python
-def _to_excel(dataframe: pd.DataFrame) -> bytes:
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        export_df = dataframe.drop(columns=['ChurnProba', 'RiskLevel'], errors='ignore')
-        export_df.to_excel(writer, index=False, sheet_name='Alertes')
-
-        workbook  = writer.book
-        worksheet = writer.sheets['Alertes']
-
-        # En-têtes colorés (fond violet RetainIQ + police blanche + bordure)
-        header_fmt = workbook.add_format({
-            'bold':       True,
-            'bg_color':   '#667eea',
-            'font_color': 'white',
-            'border':     1,
-        })
-        for col_num, col_name in enumerate(export_df.columns):
-            worksheet.write(0, col_num, col_name, header_fmt)
-            worksheet.set_column(col_num, col_num, max(18, len(str(col_name)) + 4))
-
-    return output.getvalue()
+if st.button("Envoyer les rapports maintenant"):
+    result = sched.trigger_now("weekly_report")
+    st.success(f"Job déclenché : {result}")
 ```
 
-Le nom de fichier inclut le seuil de risque et le motif filtré, permettant une traçabilité immédiate :
+**Modification de la planification sans redémarrage :**
 
-```
-alertes_75pct_Pression_tarifaire.xlsx
-```
-
-#### 4.4 Rapport hebdomadaire automatique (job `weekly_report`)
-
-```
-send_weekly_reports()
-    │
-    ├── load_users()                  ← database.get_all_users()
-    │
-    └── Pour chaque utilisateur :
-            │
-            ├── load_user_model(email) ← model_[safe].pkl + data_[safe].csv
-            │
-            ├── model.predict_proba(X)[:, 1] → df['ChurnProba']
-            │
-            ├── generate_pdf_report(df, company, sector, path)
-            │       → PDF A4 : KPIs + Top 10 clients + actions recommandées
-            │
-            └── send_pdf_via_sendgrid(to_email, subject, pdf_path)
-                    │
-                    ├── Succès → email envoyé
-                    └── Échec  → _save_pdf_locally() → reports_archive/
-```
-
-#### 4.5 Job mensuel de gratitude (job `loyalty_messages`)
-
-```
-send_loyalty_messages()
-    │
-    ├── get_all_users() ← SQLite
-    │
-    └── Pour chaque utilisateur :
-            │
-            ├── _load_user_data(email) → (df, model, features)
-            │
-            ├── _filter_champions(df, model, features)
-            │       ChurnProba < 0.20 ET tenure >= 12 → champions[]
-            │
-            └── Pour chaque champion :
-                    │
-                    ├── tenure % 12 == 0 → type_msg = "anniversaire" 🎂
-                    ├── tenure % 12 != 0 → type_msg = "mensuel"      💌
-                    │
-                    ├── _build_message(i, tenure, secteur, type_msg)
-                    │       → (subject, body) depuis GRATITUDE_MESSAGES
-                    │         récompense auto : fidelite[i % len(fidelite)]
-                    │
-                    └── _send_gratitude_email(user_email, subject, body)
-                            Gmail SMTP_SSL port 465
-                            Simulation si GMAIL_ADDRESS absent
+```python
+def update_schedule(day_of_week: str, hour: int, minute: int):
+    _scheduler.reschedule_job(
+        "weekly_report",
+        trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
+    )
 ```
 
 ---
 
-## 11. Workflow complet — étape par étape (v2.0)
+### 9.7 Webhook CRM/ERP — Programme de fidélité
 
-### 11.1 Authentification et inscription
+Le webhook permet à RetainIQ de notifier un système externe (CRM, ERP, Zapier, Make) lorsqu'une campagne de fidélité est déclenchée.
 
-**Fichiers :** `auth.py`, `database.py`
+**Configuration :** URL saisie dans le Panneau Admin > Fidélité > Bloc 4. Stockée dans `loyalty_settings.json`.
 
-1. L'utilisateur accède à l'application → `show_auth_page()` est appelée
-2. **Connexion :** saisie email + mot de passe → `login_user(email, password)`
-   - `get_user(email)` interroge SQLite
-   - `_check_password()` vérifie selon le `hash_type` stocké
-   - Si `hash_type == "sha256"` et mot de passe correct → migration transparente vers bcrypt via `update_user_hash()`
-   - En cas de succès : injection dans `st.session_state` de `logged_in`, `user_email`, `user_company`, `user_secteur`
-3. **Inscription :** saisie nom entreprise, email, secteur, mot de passe → `register_user()`
-   - Vérification `user_exists(email)` → `create_user()` avec hash bcrypt
-   - Validation : email unique, mots de passe identiques, minimum 6 caractères
-4. **Déconnexion :** bouton sidebar → `logged_in = False`, rerun
-
-```
-[Page Login/Inscription]
-        ↓
-   login_user()
-        ├── get_user()          ← SQLite SELECT
-        ├── _check_password()   ← bcrypt.checkpw() ou SHA256
-        └── update_user_hash()  ← migration transparente SHA256→bcrypt
-        ↓
-   st.session_state.logged_in = True
-   st.rerun()
-```
-
-### 11.2 Blank Slate — premier démarrage
-
-**Fichier :** `churn_prediction_dashboard.py`
-
-Après connexion, le système vérifie l'existence du fichier `model_[email_safe].pkl` :
-
-- **Sans modèle (Blank Slate) :** navigation réduite à `["🏠 Bienvenue", "📤 Importer mes données"]`. Un bandeau d'avertissement s'affiche dans la sidebar. La page Bienvenue guide l'utilisateur en 3 étapes visuelles.
-- **Avec modèle actif :** navigation complète avec 11 pages. La sidebar affiche `✅ Modèle personnalisé actif`.
-
-### 11.3 Import CSV et pipeline de données
-
-**Fichier :** `data_pipeline.py` — Fonction principale : `show_pipeline_page(user_email, secteur)`
-
-Le pipeline se déroule en **6 étapes** visuelles. Voir [Workflow 1](#101-workflow-1--ingestion-et-prédiction-ml) pour la description détaillée de chaque étape.
-
-### 11.4 Entraînement du modèle XGBoost
-
-**Fichier :** `data_pipeline.py` — `train_custom_model(df_clean, user_email)`
+**Envoi du payload :**
 
 ```python
-model = XGBClassifier(
-    use_label_encoder=False,
-    eval_metric="logloss",
-    random_state=42,
-    n_estimators=100,
-    max_depth=4,
-    learning_rate=0.1,
-    scale_pos_weight=n_neg / n_pos,  # auto-calculé
-)
+def _send_webhook(url: str, payload: dict) -> tuple[bool, str]:
+    try:
+        r = requests.post(url, json=payload, timeout=5)
+        if r.status_code < 300:
+            return True, f"Webhook reçu (HTTP {r.status_code})"
+        return False, f"Erreur HTTP {r.status_code}"
+    except requests.RequestException as e:
+        return False, f"Erreur réseau : {e}"
 ```
 
-Le modèle entraîné est sérialisé avec pickle sous la forme :
+> **Limitation connue :** le webhook n'est pas signé (pas de HMAC-SHA256). Pour un usage en production, ajouter un header `X-RetainIQ-Signature` calculé sur le payload.
+
+---
+
+## 10. Décryptage du code — passages clés
+
+### 10.1 Détection automatique de colonnes (`detect_columns`)
+
 ```python
-{"model": XGBClassifier, "features": list[str]}
+def detect_columns(df: pd.DataFrame, secteur: str) -> dict:
+    # 1. Normaliser les noms de colonnes
+    df.columns = [c.strip() for c in df.columns]
+    cols_lower  = {c.lower(): c for c in df.columns}
+
+    # 2. Chercher la colonne cible
+    target_col = None
+    all_hints  = GLOBAL_TARGET_SYNONYMS + SECTEUR_COLUMNS[secteur]["target_hints"]
+    for hint in all_hints:
+        if hint.lower() in cols_lower:
+            target_col = cols_lower[hint.lower()]
+            break
+
+    # 3. Identifier les colonnes CRM (PII) à exclure
+    crm_cols = [cols_lower[c] for c in CRM_COLUMN_SYNONYMS if c in cols_lower]
+
+    # 4. Séparer numériques et catégorielles parmi les features restantes
+    feature_cols = [c for c in df.columns if c not in crm_cols + [target_col]]
+    numeric_cols     = df[feature_cols].select_dtypes(include="number").columns.tolist()
+    categorical_cols = df[feature_cols].select_dtypes(exclude="number").columns.tolist()
+
+    return {
+        "target":      target_col,
+        "numeric":     numeric_cols,
+        "categorical": categorical_cols,
+        "crm":         crm_cols,
+        "ignored":     [],
+    }
 ```
 
-### 11.5 Dashboard Overview et Visual Analytics
+**Pourquoi cette approche :** la détection par synonymes rend le système agnostique au nom exact des colonnes. Un fichier avec `"Churn"`, `"attrition"` ou `"resiliation"` sera traité identiquement.
 
-**Fichier :** `churn_prediction_dashboard.py`
+---
 
-- **Overview :** 4 KPIs (Total Clients, Taux Churn, Précision Modèle, Clients Urgents), tableau des 10 premiers clients avec score, export CSV complet. Les colonnes tenure et charges sont détectées dynamiquement par lookup dans une liste de synonymes (`tenure`, `anciennete_mois`, `mois_inscrit`, `mois_client` / `MonthlyCharges`, `abonnement_mensuel`, `mrr`, `panier_moyen`) — la page fonctionne quel que soit le secteur.
-- **Visual Analytics :** Pie rétention/churn, histogramme des charges vs Churn *(conditionnel : affiché uniquement si une colonne de charges est détectée)*, boxplot ancienneté vs Churn *(conditionnel)*, top 10 features importance XGBoost, distribution churn (Seaborn), histogramme ancienneté *(conditionnel)*, matrice de corrélation. Chaque graphique conditionnel affiche un message `st.info` explicatif si la colonne correspondante est absente du dataset.
+### 10.2 Nettoyage et encodage des données (`clean_data`)
 
-### 11.6 Prédiction IA et jauge de risque
+```python
+def clean_data(df: pd.DataFrame, detected: dict) -> pd.DataFrame:
+    target = detected["target"]
 
-**Fichier :** `churn_prediction_dashboard.py` — Page `🔮 AI Prediction`
+    # 1. Encoder la cible en binaire
+    churn_map = {
+        "yes": 1, "oui": 1, "true": 1, "1": 1, 1: 1,
+        "no": 0,  "non": 0, "false": 0,"0": 0, 0: 0,
+    }
+    df[target] = df[target].map(
+        lambda v: churn_map.get(str(v).lower().strip(), None)
+    )
+    df = df.dropna(subset=[target])
+    df[target] = df[target].astype(int)
 
-Deux modes :
-1. **Quick Prediction :** valeurs médianes automatiques pour toutes les features
-2. **Manual Input :** layout fixe Telco (tenure, charges, contrat, internet) ou layout dynamique pour datasets custom (sliders générés automatiquement)
+    # 2. Convertir TotalCharges (souvent string avec espaces)
+    if "TotalCharges" in df.columns:
+        df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
 
-Résultat : jauge Plotly Indicator (mode gauge+number) colorée selon le niveau + bloc CSS `risk-high` / `risk-medium` / `risk-low` + recommandations contextuelles.
+    # 3. Imputer les valeurs manquantes
+    for col in detected["numeric"]:
+        df[col] = df[col].fillna(df[col].median())
+    for col in detected["categorical"]:
+        df[col] = df[col].fillna(df[col].mode()[0])
 
-**Fonction `risk_gauge(score)` :**
+    # 4. One-hot encoder les colonnes catégorielles
+    df = pd.get_dummies(df, columns=detected["categorical"], drop_first=False)
 
-| Score | Couleur | Label | Classe CSS |
-|-------|---------|-------|-----------|
-| > 0.60 | `#EF4444` (rouge) | RISQUE ÉLEVÉ | `risk-high` |
-| 0.35–0.60 | `#F59E0B` (orange) | RISQUE MODÉRÉ | `risk-medium` |
-| ≤ 0.35 | `#00CC96` (vert) | RISQUE FAIBLE | `risk-low` |
+    return df
+```
 
-### 11.7 Simulateur What-If
+---
 
-**Fichier :** `churn_prediction_dashboard.py` — Page `⚡ Simulateur What-If`
+### 10.3 Schéma SQLite et opérations CRUD (`database.py`)
 
-Permet de comparer deux situations (avant/après une action commerciale). Le simulateur est **entièrement agnostique au secteur** : il génère automatiquement les contrôles (sliders, selectbox, number_input) à partir des features réelles du modèle entraîné.
+```python
+def init_db():
+    con = _connect()
+    con.execute("PRAGMA journal_mode=WAL")   # Write-Ahead Log — lectures non-bloquantes
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            email         TEXT PRIMARY KEY,
+            password_hash TEXT NOT NULL,
+            hash_type     TEXT NOT NULL DEFAULT 'bcrypt',
+            company       TEXT,
+            secteur       TEXT,
+            role          TEXT NOT NULL DEFAULT 'agent',
+            created_at    TEXT NOT NULL
+        )
+    """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS reward_primitives (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL,
+            label      TEXT NOT NULL,
+            action     TEXT,
+            cible      TEXT,
+            valeur     TEXT,
+            duree      TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
+        )
+    """)
+    con.commit()
+    con.close()
+```
 
-1. **Analyse automatique des features** via `_whatsif_spec(col)` — classifie chaque colonne :
-   - `constant` : valeur fixe, non modifiable
-   - `binary` : selectbox Oui/Non (0/1)
-   - `discrete` : selectbox de valeurs entières uniques (≤ 10 valeurs)
-   - `continuous` : slider (min, max, médiane)
-2. L'utilisateur configure la **situation actuelle** et la **situation cible** via des formulaires auto-générés côte à côte
-3. `model.predict_proba(pd.DataFrame([row]))` calcule `score_a` et `score_b`
-4. Affichage côte à côte : jauge avant, delta (+ ou −), jauge après
-5. Économie client affichée si une colonne de charges est détectable parmi les inputs
-6. Recommandations via `get_recommendations(score, tenure_val, charges_val)` avec lookup dynamique des colonnes tenure/charges
+**Mode WAL (Write-Ahead Logging) :** permet aux lectures de se faire sans bloquer les écritures. Indispensable avec Streamlit qui peut recevoir plusieurs connexions simultanées sur le même processus.
 
-### 11.8 Alertes Clients
+**Cascade sur suppression :** `ON DELETE CASCADE` sur `reward_primitives` garantit qu'un utilisateur supprimé n'laisse pas d'orphelins dans le catalogue de récompenses.
 
-**Fichier :** `churn_prediction_dashboard.py` — Page `🚨 Alertes Clients`
+---
 
-- Slider de seuil (30%–90%) pour filtrer `df[df['ChurnProba'] > seuil]`
-- Filtre additionnel par Motif de Risque (issu du moteur de triage)
-- Tri par score décroissant, charges décroissantes ou ancienneté croissante — **avec fallback gracieux** : si la colonne correspondante est absente du dataset, le tri par score est appliqué automatiquement et un `st.info` en informe l'utilisateur
-- KPIs : nombre de clients à risque, score moyen, revenu mensuel menacé *(affiché « N/A » si aucune colonne de charges n'est détectée)*
-- Tableau paginé des 50 premiers + **export Excel formaté** (xlsxwriter, en-têtes colorés)
-- Bloc envoi manuel de rapport PDF via SendGrid (avec pré-remplissage email `session_state`)
-- 3 fiches d'actions recommandées (appel, offre, email)
+### 10.4 Migration SHA256 → bcrypt (`auth.py`)
 
-### 11.9 Explainabilité SHAP
+```python
+def login_user(email: str, password: str):
+    user = get_user(email)
+    if user is None:
+        return False, "Email introuvable."
 
-**Fichier :** `shap_explainer.py` — `show_shap_page(model, df, feature_names)`
+    # Vérification selon le type de hash stocké
+    if not _check_password(password, user["password_hash"], user["hash_type"]):
+        return False, "Mot de passe incorrect."
 
-**Vue 1 — Importance globale :** Barres horizontales des 15 features avec le plus grand `|SHAP moyen|`
+    # Migration transparente : upgrade silencieux au prochain login
+    if user["hash_type"] == "sha256":
+        new_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        update_user_hash(email, new_hash, new_type="bcrypt")
 
-**Vue 2 — Impact positif vs négatif :** Barres rouges (augmentent le churn) et vertes (le réduisent), avec ligne centrale à zéro
+    return True, {
+        "company":    user["company"],
+        "secteur":    user["secteur"],
+        "role":       user.get("role", "agent"),
+        "created_at": user["created_at"],
+    }
+```
 
-**Vue 3 — Explication individuelle :** Sélecteur de client (0–100), graphique waterfall SHAP, explication en langage naturel générée par `get_shap_explanation_text()`, profil complet du client. Les champs affichés (`tenure`, `MonthlyCharges`, `TotalCharges`, `SeniorCitizen`) sont recherchés par nom exact ; si aucun n'est présent, un fallback dynamique sélectionne les 4 premières features numériques continues du modèle.
+**Pourquoi cette approche :** SHA256 sans sel est vulnérable aux attaques par table arc-en-ciel. La migration est transparente (aucune action requise des utilisateurs) et progressive (chaque compte migre à sa prochaine connexion réussie).
 
-**Vue 4 — Scatter charges vs SHAP :** Nuage de points MonthlyCharges × Impact SHAP, coloré par score de risque
+---
 
-**Optimisation :** `compute_shap_values()` est décorée `@st.cache_data` pour éviter le recalcul à chaque interaction.
+### 10.5 Singleton APScheduler dans Streamlit
 
-### 11.10 Assistant IA (Chatbot)
+Le problème : Streamlit réexécute le script entier à chaque interaction. Sans précaution, le scheduler serait créé et démarré des centaines de fois par session.
 
-**Fichier :** `churn_prediction_dashboard.py` — `chatbot_response(question)`
+**Solution : double verrou — module Python + session state Streamlit**
 
-Chatbot basé sur des règles avec correspondance de mots-clés en langue naturelle. L'historique est persisté dans `st.session_state.chat_history`.
+```python
+# scheduler.py — niveau module Python (singleton process)
+_scheduler = BackgroundScheduler(timezone=pytz.timezone("Europe/Paris"))
+_is_started = False
 
-| Mots-clés reconnus | Réponse |
-|--------------------|---------|
-| bonjour, salut, hello | Présentation + nombre de clients urgents |
-| churn, partir, quitter | Définition + taux actuel + clients urgents |
-| pourquoi, cause, raison | Top 3 facteurs de churn |
-| xgboost, modèle, accuracy | Détails techniques du modèle |
-| action, faire, retenir | Actions de rétention recommandées |
-| simulateur, what-if | Présentation du simulateur |
-| alerte, urgent | Nombre de clients en risque élevé |
-| secteur, telecom, sport | Secteurs compatibles + secteur actif |
-| combien, nombre, total | Statistiques de la base |
-| (autre) | Message d'aide contextuel |
+def start_scheduler():
+    global _is_started
+    if _is_started:          # Verrou 1 : ne démarre pas deux fois dans le même processus
+        return
+    _scheduler.add_job(...)
+    _scheduler.start()
+    _is_started = True
 
-5 questions rapides pré-configurées en boutons.
+# churn_prediction_dashboard.py — niveau session Streamlit
+if not st.session_state.get("_scheduler_started"):   # Verrou 2 : par session utilisateur
+    sched.start_scheduler()
+    st.session_state["_scheduler_started"] = True
+```
 
-### 11.11 Programme de Fidélité
+**Pourquoi deux verrous ?** Le verrou module évite les doublons au niveau processus (plusieurs workers). Le verrou session_state évite les appels redondants lors des reruns Streamlit d'un même utilisateur.
 
-**Fichiers :** `loyalty_page.py`, `loyalty_config.py`, `loyalty_messages_job.py`, `database.py`
+---
 
-La plateforme passe de l'IA **prédictive** à l'IA **prescriptive**. Deux améliorations majeures ont été apportées en v2.1 :
+### 10.6 Segmentation What-If — classification automatique des features
 
-#### Catalogue de récompenses dynamique (SQLite)
+```python
+def _whatsif_spec(col: str, df: pd.DataFrame) -> tuple:
+    vals = df[col].dropna().unique()
+    n    = len(vals)
 
-Les récompenses ne sont plus une liste statique codée en dur. L'utilisateur crée et supprime ses propres récompenses depuis un formulaire dans la page Fidélité (`st.form("form_add_reward")`). Chaque récompense est stockée dans la table `reward_primitives` (voir Section 6) avec 4 primitives : **Action**, **Cible**, **Valeur**, **Durée**. Si le catalogue est vide, le bouton « Déclencher la campagne » est désactivé avec un message guidant l'utilisateur.
+    if n <= 1:
+        return ("constant", vals[0] if n == 1 else 0)
 
-#### Webhook HTTP sur déclenchement de campagne
+    is_binary  = set(vals).issubset({0, 1, True, False})
+    is_integer = df[col].dtype in ("int32", "int64") or all(v == int(v) for v in vals)
+    is_small   = n <= 10
 
-Un champ URL webhook est configurable dans le panneau admin (Bloc 4). À chaque déclenchement confirmé, `_send_webhook(url, payload)` effectue un `POST` JSON avec le payload structuré suivant :
+    if is_binary:
+        return ("binary", None)                          # → st.selectbox Non / Oui
+    if is_integer and is_small:
+        return ("discrete", sorted(vals.tolist()))       # → st.selectbox liste valeurs
+    return ("continuous", (df[col].min(), df[col].max(), df[col].median()))  # → st.slider
+```
+
+Cette classification permet de générer une interface adaptée sans aucune configuration manuelle, quel que soit le dataset importé.
+
+---
+
+## 11. Limitations connues et pistes d'amélioration
+
+### 11.1 Limitations actuelles
+
+| Limitation | Impact | Sévérité |
+|---|---|---|
+| Scheduler en timezone `Europe/Paris` uniquement | Envois décalés pour clients hors Europe | Faible |
+| `loyalty_settings.json` non thread-safe | Risque de corruption en écriture simultanée | Moyenne |
+| Webhook sans signature HMAC | Impossible de vérifier l'authenticité côté récepteur | Moyenne |
+| Pas d'interface admin pour la gestion des utilisateurs | Nécessite des requêtes SQLite directes | Faible |
+| SHAP charge tout le dataset en RAM | Peut devenir lent pour des datasets > 50k lignes | Moyenne |
+| Historique CRM en `session_state` uniquement | Perdu à la fermeture du navigateur | Faible |
+| Pas de A/B testing | Tous les utilisateurs reçoivent le même modèle | Faible |
+| Pas de pagination sur les tableaux Streamlit | `st.dataframe` peut être lent au-delà de 10k lignes | Faible |
+
+### 11.2 Pistes d'amélioration
+
+**Court terme**
+- Persister l'historique CRM dans SQLite (table `crm_history`)
+- Ajouter une signature HMAC-SHA256 sur les webhooks
+- Remplacer `loyalty_settings.json` par une table SQLite `user_settings`
+- Ajouter une pagination aux tableaux d'alertes et de fidélité
+
+**Moyen terme**
+- Migrer le scheduler vers **Celery + Redis** pour un support multi-worker robuste
+- Implémenter un panneau super_admin dédié pour la gestion globale des tenants
+- Ajouter une configuration de timezone par utilisateur
+- Exposer une API REST (FastAPI) pour l'intégration externe sans webhook
+
+**Long terme**
+- A/B testing : deux modèles par tenant, attribution aléatoire des clients
+- Support de modèles alternatifs (LightGBM, CatBoost) avec sélection automatique
+- Export vers des entrepôts de données (BigQuery, Snowflake)
+- Tableau de bord super_admin avec métriques cross-tenant agrégées
+
+---
+
+## 12. Diagramme d'architecture — PlantUML
+
+> Le projet RetainIQ utilise une **architecture 100 % fonctionnelle** (aucune classe Python custom). Le diagramme ci-dessous représente chaque **module** comme une classe UML, ses variables globales comme attributs, ses fonctions comme méthodes, et les imports/appels inter-modules comme relations.
+
+**Fichier source :** [`retainiq_architecture.puml`](retainiq_architecture.puml)
+
+**Pour générer le diagramme :**
+```bash
+# Avec PlantUML CLI (nécessite Java)
+java -jar plantuml.jar retainiq_architecture.puml
+
+# Avec l'extension VS Code "PlantUML" (jgclark.plantuml ou jebbs.plantuml)
+# Ouvrir retainiq_architecture.puml → Alt+D pour prévisualiser
+
+# En ligne : https://www.plantuml.com/plantuml/uml/
+# (coller le contenu du fichier .puml)
+```
+
+```plantuml
+@startuml RetainIQ_Architecture
+
+skinparam classAttributeIconSize 0
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam linetype ortho
+
+skinparam class {
+    BackgroundColor         #F8F9FA
+    BorderColor             #667EEA
+    HeaderBackgroundColor   #667EEA
+    HeaderFontColor         #FFFFFF
+    HeaderFontStyle         bold
+    ArrowColor              #764BA2
+    FontColor               #212529
+}
+
+skinparam stereotype {
+    CBackgroundColor #E8EAFF
+    CBorderColor     #667EEA
+}
+
+skinparam note {
+    BackgroundColor #FFF8E1
+    BorderColor     #F4A423
+}
+
+title <b>RetainIQ — Diagramme d'architecture modulaire</b>\n<size:11>(architecture fonctionnelle : modules représentés comme classes)</size>
+
+' ═══════════════════════════════════════════════════
+'  COUCHE DONNÉES / PERSISTANCE
+' ═══════════════════════════════════════════════════
+
+package "Persistance" #EEF0FF {
+
+    class "database" <<module>> {
+        + DB_PATH : str
+        + VALID_ROLES : tuple
+        .. Initialisation ..
+        + init_db() : None
+        + get_connection() : ContextManager
+        .. CRUD — Users ..
+        + get_user(email) : dict | None
+        + create_user(email, hash, company,\n  secteur, hash_type, role) : None
+        + update_user_hash(email, hash, type) : None
+        + get_all_users() : dict
+        + get_all_users_admin() : list[dict]
+        + get_users_by_company(company) : list[dict]
+        + update_user_role(email, role) : None
+        + delete_user(email) : None
+        + user_exists(email) : bool
+        + seed_default_users(hash_fn) : None
+        .. CRUD — Reward Primitives ..
+        + get_reward_primitives(user_email) : list
+        + create_reward_primitive(user_email,\n  label, action, cible, valeur, duree) : int
+        + delete_reward_primitive(id) : None
+    }
+
+    note right of database
+        <b>SQLite WAL mode</b>
+        Tables :
+        • users (email PK, password_hash,
+          hash_type, company, secteur,
+          role, created_at)
+        • reward_primitives (id AUTOINCREMENT,
+          user_email FK → CASCADE)
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE AUTHENTIFICATION
+' ═══════════════════════════════════════════════════
+
+package "Authentification" #FFF0F5 {
+
+    class "auth" <<module>> {
+        .. Hachage ..
+        + hash_password(password) : str
+        - _check_password(pwd, hash,\n  hash_type) : bool
+        .. Compatibilité ..
+        + load_users() : dict
+        .. Inscription / Connexion ..
+        + register_user(email, password,\n  company, secteur, role) : tuple[bool,str]
+        + login_user(email, password) : tuple[bool, dict|str]
+        .. Interface Streamlit ..
+        + show_auth_page() : None
+    }
+
+    note right of auth
+        Migration transparente
+        SHA256 → bcrypt
+        au prochain login réussi
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE MACHINE LEARNING
+' ═══════════════════════════════════════════════════
+
+package "Machine Learning" #F0FFF4 {
+
+    class "data_pipeline" <<module>> {
+        + TENANT_DATA_DIR : str
+        + SECTEUR_COLUMNS : dict
+        + GLOBAL_TARGET_SYNONYMS : list
+        + CRM_COLUMN_SYNONYMS : list
+        .. Utilitaires ..
+        - _sanitize_company(name) : str
+        .. Détection & Nettoyage ..
+        + detect_columns(df, secteur) : dict
+        + clean_data(df, detection_report) : tuple[DataFrame, list]
+        + quality_report(df_raw, df_clean,\n  detection_report) : dict
+        .. Entraînement ..
+        + train_custom_model(df_clean,\n  user_email, crm_df,\n  detection_report) : tuple[model, metrics, str|None]
+        + prepare_features_for_prediction(\n  df, feature_names) : DataFrame
+        .. Chargement des modèles ..
+        + load_user_model(user_email) : tuple
+        + load_tenant_model(user_company) : tuple
+        .. Triage ..
+        + triage_risque(df_risque,\n  df_full) : DataFrame
+        .. Interface Streamlit ..
+        + show_pipeline_page(user_email,\n  secteur) : None
+    }
+
+    note right of data_pipeline
+        <b>XGBClassifier</b>
+        n_estimators=100, max_depth=4
+        learning_rate=0.1, eval_metric=logloss
+        scale_pos_weight = min(n_neg/n_pos, 10.0)
+        Split stratifié 80/20
+        Fallback : personal → tenant → demo
+    end note
+
+    class "shap_explainer" <<module>> {
+        .. Calcul (caché) ..
+        + compute_shap_values(\n  _model, _X) : tuple[ndarray, float]
+        .. Explication ..
+        + get_shap_explanation_text(\n  shap_vals, feature_names,\n  top_n) : str
+        .. Interface Streamlit ..
+        + show_shap_page(model, df,\n  feature_names) : None
+    }
+
+    note right of shap_explainer
+        @st.cache_data
+        4 vues : globale, signée,
+        individuelle, scatter
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE EMAIL / REPORTING
+' ═══════════════════════════════════════════════════
+
+package "Email & Reporting" #FFFBF0 {
+
+    class "email_reports" <<module>> {
+        .. Utilitaires ..
+        - _safe(v) : str
+        - _risk_label(score) : str
+        + prepare_scored_df(df) : DataFrame
+        .. Génération PDF ..
+        + generate_pdf_report(df, company,\n  sector, output_path,\n  report_title) : str
+        .. Envoi SendGrid ..
+        - _save_pdf_locally(pdf_path,\n  to_email) : str
+        + send_pdf_via_sendgrid(to_email,\n  subject, body, pdf_path,\n  from_email, from_name) : tuple[bool,str]
+    }
+
+    note right of email_reports
+        Triple fallback :
+        1. Clé absente → archivage local
+        2. Erreur HTTP → archivage local
+        3. Exception → reports_archive/
+    end note
+
+    class "email_service" <<module>> {
+        .. Brevo API v3 ..
+        + send_campaign_email(to_email,\n  subject, html_content) : tuple[bool,str]
+    }
+
+    note right of email_service
+        POST https://api.brevo.com
+        /v3/smtp/email
+        Timeout : 10s
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE AUTOMATISATION / PLANIFICATION
+' ═══════════════════════════════════════════════════
+
+package "Automatisation" #FFF5F5 {
+
+    class "scheduler" <<module>> {
+        - _scheduler : BackgroundScheduler
+        - _lock : Lock
+        + run_history : list[dict]
+        + next_run_time : datetime | None
+        .. Gestion du cycle de vie ..
+        + start_scheduler(day_of_week,\n  hour, minute) : BackgroundScheduler
+        + stop_scheduler() : None
+        + get_status() : dict
+        + trigger_now() : None
+        + update_schedule(day_of_week,\n  hour, minute) : None
+        .. Callbacks internes ..
+        - _run_weekly_job() : None
+        - _refresh_next_run() : None
+    }
+
+    note right of scheduler
+        <b>Singleton module</b>
+        Double verrou :
+        • _is_started (niveau processus)
+        • session_state (niveau Streamlit)
+        Timezone : Europe/Paris
+        misfire_grace_time = 3600s
+    end note
+
+    class "weekly_report_job" <<module>> {
+        .. Job hebdomadaire (lundi 8h) ..
+        + send_weekly_reports() : None
+    }
+
+    class "loyalty_messages_job" <<module>> {
+        .. Chargement ..
+        - _load_users() : dict
+        - _load_user_data(user_email) : tuple
+        .. Filtrage ..
+        - _filter_champions(df, model,\n  features) : DataFrame
+        .. Construction messages ..
+        - _build_message(client_idx, tenure,\n  secteur, type_msg) : tuple[str,str]
+        .. Envoi ..
+        - _send_gratitude_email(to_email,\n  subject, body) : bool
+        .. Job mensuel (1er du mois 10h) ..
+        + send_loyalty_messages() : dict
+    }
+
+    note right of loyalty_messages_job
+        Champions : ChurnProba < 0.20
+        ET tenure >= 12 mois
+        Gmail SMTP_SSL port 465
+        tenure % 12 == 0 → anniversaire
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE FIDÉLITÉ / CRM
+' ═══════════════════════════════════════════════════
+
+package "Fidélité & CRM" #F5F0FF {
+
+    class "loyalty_config" <<module>> {
+        + REWARDS_CATALOG : dict
+        + GRATITUDE_MESSAGES : dict
+        + SEGMENTATION_CONFIG : dict
+    }
+
+    note right of loyalty_config
+        5 secteurs ×
+        sauvetage + fidélité + seuils
+        champion_proba_max = 0.20
+        sauvetage_proba_min = 0.50
+    end note
+
+    class "loyalty_page" <<module>> {
+        - _SETTINGS_FILE : str
+        - _DEFAULT_SETTINGS : dict
+        .. Configuration ..
+        - _load_settings(user_email) : dict
+        - _save_settings(user_email,\n  settings) : None
+        .. Webhook ..
+        - _send_webhook(url,\n  payload) : tuple[bool,str]
+        .. Segmentation ..
+        + segment_clients(df,\n  secteur) : tuple[DataFrame, DataFrame, DataFrame]
+        .. Interface Streamlit ..
+        + show_loyalty_page(df, secteur,\n  user_company, user_email,\n  user_role) : None
+        - _render_config_panel(user_email,\n  user_company, secteur) : None
+    }
+
+    note right of loyalty_page
+        3 cohortes :
+        • cohorte_a (sauvetage, >50%)
+        • cohorte_b (fidélité, <35%)
+        • champions (<20%, tenure≥12)
+        Settings → loyalty_settings.json
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  COUCHE UTILITAIRES
+' ═══════════════════════════════════════════════════
+
+package "Utilitaires" #F5F5F5 {
+
+    class "migrate_users" <<module>> {
+        .. Migration one-shot ..
+        + migrate() : None
+    }
+
+    note right of migrate_users
+        users.json → SQLite
+        Préserve hash_type='sha256'
+        Crée .bak au succès
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  POINT D'ENTRÉE PRINCIPAL
+' ═══════════════════════════════════════════════════
+
+package "Interface Utilisateur" #F0F4FF {
+
+    class "churn_prediction_dashboard" <<module>> {
+        + CATEGORICAL_DUMMIES_MAP : dict
+        + SECTEUR_CONFIG : dict
+        - _DEFAULT_CFG : dict
+        - _ROLE_LABELS : dict
+        .. Flags RBAC (calculés au chargement) ..
+        - _is_super_admin : bool
+        - _is_admin : bool
+        - _is_manager_or_admin : bool
+        .. Helpers UI ..
+        - _get_active_cat_groups(\n  feature_names) : dict
+        + risk_gauge(score) : tuple[Figure,...]
+        + get_recommendations(score,\n  tenure, charges) : list[str]
+        + build_input_df(tenure, charges,\n  contract, internet,\n  security) : DataFrame
+        .. IA Générative ..
+        + gemini_draft_email(context,\n  email_type) : str
+        + gemini_chat_response(question,\n  df_clean) : str
+        .. Pages Streamlit (11 sections) ..
+        + section_bienvenue() : None
+        + section_overview() : None
+        + section_visual_analytics() : None
+        + section_ai_prediction() : None
+        + section_future_scenarios() : None
+        + section_what_if() : None
+        + section_alertes() : None
+        + section_assistant_ia() : None
+        + section_import() : None
+        + section_shap() : None
+        + section_campagnes() : None
+        + section_fidelite() : None
+        + section_admin() : None
+    }
+
+    note right of churn_prediction_dashboard
+        Point d'entrée unique
+        <b>streamlit run churn_prediction_dashboard.py</b>
+        Navigation : st.session_state["section"]
+        Garde RBAC : st.stop() côté serveur
+        Gemini 2.5 Flash : chatbot + emails
+    end note
+
+}
+
+' ═══════════════════════════════════════════════════
+'  RELATIONS
+' ═══════════════════════════════════════════════════
+
+' auth ↔ database
+auth "1" --> "1" database : utilise (CRUD users)
+
+' dashboard → auth
+churn_prediction_dashboard "1" --> "1" auth : authentification\nshow_auth_page()
+
+' dashboard → ML
+churn_prediction_dashboard "1" --> "1" data_pipeline : pipeline + prédictions\nload/train/triage
+churn_prediction_dashboard "1" --> "1" shap_explainer : explainabilité\nshow_shap_page()
+
+' dashboard → email
+churn_prediction_dashboard "1" --> "1" email_reports : rapports PDF\nsend_pdf_via_sendgrid()
+churn_prediction_dashboard "1" --> "1" email_service : campagnes Brevo\nsend_campaign_email()
+
+' dashboard → scheduler
+churn_prediction_dashboard "1" --> "1" scheduler : start / trigger / status
+
+' dashboard → fidélité
+churn_prediction_dashboard "1" --> "1" loyalty_page : programme fidélité\nshow_loyalty_page()
+
+' dashboard → database (admin panel)
+churn_prediction_dashboard "1" --> "1" database : gestion utilisateurs\n(Panneau Admin)
+
+' scheduler → jobs
+scheduler "1" *-- "1" weekly_report_job : déclenche\n(lundi 8h)
+scheduler "1" *-- "1" loyalty_messages_job : déclenche\n(1er du mois 10h)
+
+' weekly_report_job → ses dépendances
+weekly_report_job "1" --> "1" auth : load_users()
+weekly_report_job "1" --> "1" data_pipeline : load_user_model()
+weekly_report_job "1" --> "1" email_reports : generate_pdf_report()\nsend_pdf_via_sendgrid()
+
+' loyalty_messages_job → ses dépendances
+loyalty_messages_job "1" --> "1" database : get_all_users()
+loyalty_messages_job "1" --> "1" data_pipeline : load_user_model()
+loyalty_messages_job "1" --> "1" loyalty_config : templates messages
+
+' loyalty_page → ses dépendances
+loyalty_page "1" --> "1" database : reward_primitives CRUD
+loyalty_page "1" --> "1" loyalty_config : REWARDS_CATALOG\nSEGMENTATION_CONFIG
+
+' migrate_users → database (one-shot)
+migrate_users "1" ..> "1" database : migration one-shot\nusers.json → SQLite
+
+@enduml
+```
+
+### Légende des relations
+
+| Symbole | Type UML | Signification dans RetainIQ |
+|---|---|---|
+| `-->` | Association / Dépendance | Module A appelle des fonctions du module B |
+| `*--` | Composition | Le scheduler **possède** et contrôle le cycle de vie des jobs |
+| `..>` | Dépendance ponctuelle | `migrate_users` est un script one-shot, non intégré au flux normal |
+
+### Packages — couches architecturales
+
+| Package | Couleur | Modules |
+|---|---|---|
+| Persistance | Bleu clair | `database` |
+| Authentification | Rose | `auth` |
+| Machine Learning | Vert clair | `data_pipeline`, `shap_explainer` |
+| Email & Reporting | Jaune clair | `email_reports`, `email_service` |
+| Automatisation | Rouge clair | `scheduler`, `weekly_report_job`, `loyalty_messages_job` |
+| Fidélité & CRM | Violet clair | `loyalty_config`, `loyalty_page` |
+| Utilitaires | Gris | `migrate_users` |
+| Interface Utilisateur | Bleu | `churn_prediction_dashboard` |
+
+---
+
+## 13. Conclusion
+
+RetainIQ est une plateforme **complète, opérationnelle et multi-tenant** de prédiction du churn client, construite autour de trois principes fondamentaux :
+
+**1. Accessibilité sans compromis technique**
+L'interface Streamlit masque entièrement la complexité du machine learning. Un responsable commercial peut importer ses données, entraîner un modèle XGBoost et recevoir des prédictions SHAP expliquées en langage naturel — sans écrire une seule ligne de code.
+
+**2. Adaptabilité sectorielle native**
+Les cinq secteurs supportés (Télécom, Sport, E-commerce, EdTech, SaaS B2B) ne sont pas des thèmes cosmétiques. Ils gouvernent la détection des colonnes, les libellés de l'interface, les catalogues de récompenses, les templates d'emails de gratitude et les recommandations de rétention.
+
+**3. Architecture de production, déployable immédiatement**
+- Authentification bcrypt avec migration transparente depuis SHA256
+- RBAC à 4 niveaux avec isolation multi-tenant et verrous serveur (`st.stop()`)
+- Trois canaux email indépendants (SendGrid, Brevo, Gmail SMTP) avec fallbacks
+- Scheduler APScheduler robuste avec `misfire_grace_time` et déclenchement manuel
+- Explainabilité SHAP intégrée — chaque prédiction est justifiable devant un client
+
+### Stack technique résumée
+
+| Couche | Technologie |
+|---|---|
+| Interface | Streamlit 1.35+ |
+| ML | XGBoost 2.0+, scikit-learn, SHAP |
+| Data | Pandas, NumPy, Plotly, Matplotlib, Seaborn |
+| Base de données | SQLite (WAL) + bcrypt |
+| Automatisation | APScheduler (BackgroundScheduler) |
+| Reporting | ReportLab (PDF), xlsxwriter (Excel) |
+| Emails | SendGrid, Brevo API v3, Gmail SMTP |
+| IA générative | Google Gemini 2.5 Flash |
+| Environnement | python-dotenv, pickle |
+
+### Métriques du projet
+
+| Indicateur | Valeur |
+|---|---|
+| Lignes de code (Python) | ~3 500 lignes |
+| Fichiers Python | 12 fichiers |
+| Pages du dashboard | 11 pages |
+| Secteurs supportés | 5 |
+| Rôles utilisateurs | 4 |
+| Services externes intégrés | 4 (Gemini, SendGrid, Brevo, Gmail) |
+| Jobs automatiques | 2 (hebdomadaire + mensuel) |
+| Tables SQLite | 2 (users, reward_primitives) |
+
+---
+
+*Documentation générée le 13 mai 2026 — RetainIQ v1.0*
+
+---
+
+## 13. Programme de Fidélité — Documentation complète
+
+### 13.1 Workflow complet (étape par étape)
+
+```
+1. Prérequis : df contient la colonne 'ChurnProba' (lancez une prédiction IA avant)
+
+2. Filtrage initial
+   → clients_risque_raw = df[df['ChurnProba'] > 0.40]
+   → Enrichissement via triage_risque(clients_risque_raw, df)
+     (calcule 'Motif de Risque' : Pression tarifaire / Faible engagement / Charges élevées / Risque comportemental)
+
+3. Labellisation de priorité
+   → > 80%  : "🔴 Critique (>80%)"
+   → 60-80% : "🟠 Urgent (60-80%)"
+   → 40-60% : "🟡 À suivre (40-60%)"
+
+4. Ciblage interactif
+   → L'utilisateur choisit un filtre de priorité et/ou un motif de risque
+   → Le tableau affiche jusqu'à 100 clients triés par score décroissant
+   → Export CSV disponible
+
+5. Catalogue de récompenses
+   → L'utilisateur crée des récompenses via le formulaire SQLite (label, action, cible, valeur, durée)
+   → Il sélectionne une récompense dans la liste déroulante
+
+6. Déclenchement de campagne
+   → Clic sur "🚀 Déclencher la campagne"
+   → Payload JSON construit et envoyé via HTTP POST au webhook configuré
+   → Confirmation affichée + animation st.balloons()
+```
+
+Code d'entrée de la page (dans `loyalty_page.py:123`) :
+
+```python
+def show_loyalty_page(df, secteur, user_company, user_email: str = "", user_role: str = "agent"):
+    from data_pipeline import triage_risque
+
+    if 'ChurnProba' not in df.columns:
+        st.error("❌ Colonne 'ChurnProba' manquante. Lancez d'abord une prédiction IA.")
+        return
+
+    clients_risque_raw = df[df['ChurnProba'] > 0.40].copy()
+    clients_enrichis   = triage_risque(clients_risque_raw, df)
+
+    def _label_priorite(proba):
+        if proba > 0.80:   return "🔴 Critique (>80%)"
+        elif proba > 0.60: return "🟠 Urgent (60-80%)"
+        return "🟡 À suivre (40-60%)"
+
+    clients_enrichis['Priorité'] = clients_enrichis['ChurnProba'].apply(_label_priorite)
+```
+
+---
+
+### 13.2 Segmentation 3 cohortes + seuils exacts
+
+Les seuils sont définis dans `loyalty_config.py` via `SEGMENTATION_CONFIG` :
+
+```python
+SEGMENTATION_CONFIG = {
+    "champion_proba_max":   0.20,   # ChurnProba < 0.20
+    "champion_tenure_min":  12,     # Tenure >= 12 mois
+    "sauvetage_proba_min":  0.50,   # ChurnProba > 0.50
+    "fidelite_proba_max":   0.35,   # ChurnProba < 0.35
+}
+```
+
+La fonction `segment_clients()` dans `loyalty_page.py:93` applique ces seuils :
+
+```python
+def segment_clients(df, secteur):
+    cfg = SEGMENTATION_CONFIG
+    catalog      = REWARDS_CATALOG.get(secteur, {})
+    tenure_q3    = df['tenure'].quantile(0.75) if 'tenure' in df.columns else 12
+
+    # Cohorte A — Sauvetage : clients à risque urgent
+    cohorte_a = df[df['ChurnProba'] > cfg["sauvetage_proba_min"]].copy()
+    cohorte_a['Priorité'] = cohorte_a['ChurnProba'].apply(
+        lambda x: "🔴 Critique" if x > 0.80 else "🟠 Urgent" if x > 0.65 else "🟡 À suivre"
+    )
+
+    # Cohorte B — Fidélité : clients stables et anciens (tenure >= Q75)
+    cohorte_b = df[
+        (df['ChurnProba'] < cfg["fidelite_proba_max"]) &
+        (df['tenure'] >= tenure_q3)
+    ].copy()
+    cohorte_b['Médaille'] = cohorte_b['tenure'].apply(
+        lambda x: "🥇 Légende" if x >= 60 else "🥈 Vétéran" if x >= 36 else "🥉 Fidèle"
+    )
+
+    # Champions : très faible risque + ancienneté suffisante (pour le job mensuel)
+    champions = df[
+        (df['ChurnProba'] < cfg["champion_proba_max"]) &
+        (df['tenure']     >= cfg["champion_tenure_min"])
+    ].copy()
+
+    return cohorte_a, cohorte_b, champions
+```
+
+| Cohorte | Condition ChurnProba | Condition Tenure | Médaille / Priorité |
+|---|---|---|---|
+| A — Sauvetage | > 0.50 | — | 🔴 Critique > 0.80 / 🟠 Urgent > 0.65 / 🟡 À suivre sinon |
+| B — Fidélité | < 0.35 | ≥ Q75 du dataset | 🥇 ≥ 60m / 🥈 ≥ 36m / 🥉 sinon |
+| Champions | < 0.20 | ≥ 12 mois | (destinataires du job mensuel Gmail) |
+
+Le seuil `tenure_fidelite` est également configurable par secteur dans `REWARDS_CATALOG` (ex. : 18 mois pour Télécom, 6 mois pour E-commerce).
+
+---
+
+### 13.3 Catalogue récompenses CRUD SQLite
+
+Les récompenses sont stockées dans la table `reward_primitives` (SQLite, `database.py`). Chaque entrée comporte 5 primitives : `label`, `action`, `cible`, `valeur`, `durée`.
+
+**Schéma de la table** (extrait de `database.py`) :
+
+```python
+con.execute("""
+    CREATE TABLE IF NOT EXISTS reward_primitives (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT NOT NULL,
+        label      TEXT NOT NULL,
+        action     TEXT,
+        cible      TEXT,
+        valeur     TEXT,
+        duree      TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
+    )
+""")
+```
+
+**Création** (formulaire Streamlit → `loyalty_page.py:279`) :
+
+```python
+with st.form("form_add_reward", border=False):
+    new_label  = st.text_input("🏷️ Label personnalisé",  placeholder="ex : Cadeau Ancienneté")
+    new_action = st.text_input("⚡ Action",  placeholder="ex : Offrir, Appliquer, Envoyer…")
+    new_cible  = st.text_input("🎯 Cible",   placeholder="ex : Clients 12+ mois à risque…")
+    new_valeur = st.text_input("💎 Valeur",  placeholder="ex : 1 mois gratuit, -20%, 50 pts…")
+    new_duree  = st.text_input("⏱️ Durée",   placeholder="ex : 30 jours, 3 mois…")
+    submitted  = st.form_submit_button("➕ Ajouter au catalogue", type="primary")
+
+if submitted:
+    create_reward_primitive(
+        user_email=user_email,
+        label=new_label.strip(),
+        action=new_action.strip(),
+        cible=new_cible.strip(),
+        valeur=new_valeur.strip(),
+        duree=new_duree.strip(),
+    )
+    st.rerun()
+```
+
+**Lecture** : `existing = get_reward_primitives(user_email)` — retourne la liste des récompenses de l'utilisateur courant uniquement (isolation par `user_email`).
+
+**Suppression** (`loyalty_page.py:308`) :
+
+```python
+if st.button("🗑️", key=f"del_prim_{prim['id']}", help="Supprimer"):
+    delete_reward_primitive(prim['id'])
+    st.rerun()
+```
+
+Les suppressions en cascade (`ON DELETE CASCADE`) garantissent qu'un utilisateur supprimé n'orphelise pas son catalogue.
+
+---
+
+### 13.4 Déclenchement campagne + payload webhook JSON
+
+Lors du clic sur "🚀 Déclencher la campagne" (`loyalty_page.py:362`), un payload JSON structuré est construit puis envoyé via POST :
+
+```python
+webhook_payload = {
+    "event":     "loyalty_campaign_triggered",
+    "timestamp": datetime.now().isoformat(sep="T", timespec="seconds"),
+    "company":   user_company,
+    "secteur":   secteur,
+    "reward": {
+        "id":     selected_prim['id'],
+        "label":  selected_prim['label'],
+        "action": selected_prim['action'],
+        "cible":  selected_prim['cible'],
+        "valeur": selected_prim['valeur'],
+        "duree":  selected_prim['duree'],
+    },
+    "targeting": {
+        "priority_filter": filtre_priorite,
+        "motif_filter":    filtre_motif,
+        "total_clients":   nb_filtres,
+    },
+    "clients_sample": clients_sample,   # max 50 clients (churn_proba, priorite, motif)
+}
+```
+
+**Envoi** via `_send_webhook()` (`loyalty_page.py:77`) :
+
+```python
+def _send_webhook(url: str, payload: dict) -> tuple:
+    """POST payload as JSON to url. Returns (success: bool, message: str)."""
+    if not url or not url.startswith("http"):
+        return False, "URL invalide ou non configurée"
+    try:
+        import requests
+        resp = requests.post(url, json=payload, timeout=10)
+        resp.raise_for_status()
+        return True, f"HTTP {resp.status_code}"
+    except ImportError:
+        return False, "Module 'requests' non disponible (pip install requests)"
+    except Exception as exc:
+        return False, str(exc)
+```
+
+> **Compatibilité** : le webhook est agnostique — il peut notifier un CRM, un ERP, Zapier, Make, ou tout système HTTP. L'URL est configurée dans le Bloc 4 du panneau admin.
+
+---
+
+### 13.5 Rôles et permissions (agent vs manager/admin)
+
+La page fidélité est accessible à **tous les rôles** pour la partie opérationnelle (visualisation, catalogue, déclenchement de campagne). Le panneau de configuration est réservé aux rôles `manager` et `admin`.
+
+**Contrôle dans `show_loyalty_page()` (`loyalty_page.py:419`) :**
+
+```python
+if user_role in ("admin", "manager"):
+    with st.expander("⚙️ Configurer les Récompenses & Règles de campagne", expanded=False):
+        _render_config_panel(user_email, user_company, secteur)
+else:
+    st.info("🔒 La configuration des règles de campagne est réservée aux managers et administrateurs.")
+```
+
+| Fonctionnalité | agent | manager | admin | super_admin |
+|---|---|---|---|---|
+| Voir les clients à risque | ✅ | ✅ | ✅ | ✅ |
+| Filtrer et exporter | ✅ | ✅ | ✅ | ✅ |
+| Gérer le catalogue (CRUD) | ✅ | ✅ | ✅ | ✅ |
+| Déclencher une campagne | ✅ | ✅ | ✅ | ✅ |
+| Panneau de configuration (4 blocs) | ❌ | ✅ | ✅ | ✅ |
+
+Le rôle est transmis en paramètre `user_role` à `show_loyalty_page()` depuis la session state Streamlit (`st.session_state["user_role"]`).
+
+---
+
+### 13.6 Panneau de configuration (4 blocs + loyalty_settings.json)
+
+Le panneau est rendu par `_render_config_panel()` (`loyalty_page.py:426`), accessible uniquement aux managers et admins.
+
+**Bloc 1 — Paramétrage des Seuils** :
+
+```python
+seuil_urgence = st.slider("🚨 Seuil d'urgence — Cohorte A (%)", 50, 90,
+                           int(cfg_data["seuil_urgence"] * 100), step=5)
+tenure_min_b  = st.number_input("🏆 Ancienneté min — Cohorte B (mois)", 1, 120,
+                                 int(cfg_data["tenure_min_b"]), step=1)
+depense_min   = st.number_input("💰 Dépense minimum requise (€)", 0.0, 99999.0,
+                                 float(cfg_data["depense_min"]), step=50.0)
+```
+
+**Bloc 2 — Personnalisation de la Valeur** :
+
+```python
+reward_type_opts = ["Pourcentage %", "Montant fixe €", "En nature"]
+reward_type  = st.selectbox("🎁 Type de récompense", reward_type_opts, ...)
+reward_value = st.number_input("📊 Valeur de la récompense", 0.0, 99999.0, ...)
+```
+
+**Bloc 3 — Garde-Fous et Limites** :
+
+```python
+budget_max      = st.number_input("💵 Budget max / mois (€)", 0.0, 9_999_999.0, ...)
+quota_mois      = st.number_input("👥 Quota de récompenses / mois", 0, 100_000, ...)
+periode_carence = st.number_input("⏳ Période de carence (mois)", 0, 24, ...)
+```
+
+**Bloc 4 — Webhook** :
+
+```python
+webhook_url = st.text_input("URL du Webhook",
+                             value=cfg_data.get("webhook_url", ""),
+                             placeholder="https://hooks.example.com/retainiq")
+```
+
+**Persistance dans `loyalty_settings.json`** — format multi-tenant par `user_email` :
+
+```python
+# _save_settings() — loyalty_page.py:63
+def _save_settings(user_email: str, settings: dict) -> None:
+    all_settings = {}
+    if os.path.exists(_SETTINGS_FILE):
+        with open(_SETTINGS_FILE, "r", encoding="utf-8") as f:
+            all_settings = json.load(f)
+    all_settings[user_email] = settings
+    with open(_SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(all_settings, f, ensure_ascii=False, indent=2)
+```
+
+Structure de `loyalty_settings.json` :
 
 ```json
 {
-  "event":     "loyalty_campaign_triggered",
-  "timestamp": "2025-05-01T10:32:00",
-  "company":   "Entreprise XYZ",
-  "secteur":   "📱 Télécom",
-  "reward": {
-    "id": 3, "label": "Cadeau Ancienneté",
-    "action": "Offrir", "cible": "Clients 12+ mois à risque",
-    "valeur": "1 mois gratuit", "duree": "30 jours"
-  },
-  "targeting": {
-    "priority_filter": "🔴 Critique (>80%)",
-    "motif_filter":    "Pression tarifaire",
-    "total_clients":   12
-  },
-  "clients_sample": [
-    {"churn_proba": 0.9142, "priorite": "🔴 Critique (>80%)", "motif": "Pression tarifaire"}
-  ]
+  "admin@acme.com": {
+    "seuil_urgence": 0.65,
+    "tenure_min_b": 12,
+    "depense_min": 0.0,
+    "reward_type": "Pourcentage %",
+    "reward_value": 20.0,
+    "budget_max": 5000.0,
+    "quota_mois": 100,
+    "periode_carence": 3,
+    "campagne_sauvetage": true,
+    "campagne_fidelite": true,
+    "webhook_url": "https://hooks.example.com/retainiq"
+  }
 }
 ```
 
-Le payload inclut un échantillon des 50 premiers clients ciblés. L'URL est sauvegardée dans `loyalty_settings.json` par utilisateur.
-
-#### Segmentation en 3 cohortes (`segment_clients(df, secteur)`)
-
-| Cohorte | Critères | Sous-labels | Action |
-|---------|----------|-------------|--------|
-| 🚨 **Cohorte A — Sauvetage** | `ChurnProba > 0.50` | 🔴 Critique / 🟠 Urgent / 🟡 À suivre | Récompenses de sauvetage immédiates |
-| 🏆 **Cohorte B — Fidélité** | `ChurnProba < 0.35` ET `tenure ≥ Q75(tenure)` | 🥇 Légende / 🥈 Vétéran / 🥉 Fidèle | Récompenses de fidélité |
-| 🌟 **Champions** | `ChurnProba < 0.20` ET `tenure ≥ 12 mois` | Mur des Champions | Messages automatiques mensuels |
-
-**Balises dynamiques disponibles :** `{client_nom}`, `{anciennete_mois}`, `{valeur_recompense}`, `{score_risque}`, `{nom_entreprise}`
-
-### 11.12 Rapports planifiés et scheduler
-
-**Fichier :** `scheduler.py`
-
-Le scheduler est un **singleton APScheduler** initialisé une seule fois par processus Python (thread-safe via `threading.Lock`).
-
-**Status affiché :**
-- Scheduler actif/inactif (vert/rouge)
-- Prochaine exécution prévue
-- Nombre de jobs enregistrés
-- Historique des 10 dernières exécutions (date, statut, durée)
+La lecture fusionne toujours les clés manquantes avec `_DEFAULT_SETTINGS` pour garantir la rétrocompatibilité (`_load_settings()`, `loyalty_page.py:50`).
 
 ---
 
-## 12. Documentation complète des modules
+### 13.7 Job mensuel champions (loyalty_messages_job.py)
 
-### `churn_prediction_dashboard.py`
+Le job `send_loyalty_messages()` est déclenché automatiquement **le 1er de chaque mois à 10h00** par APScheduler (`scheduler.py` : `CronTrigger(day=1, hour=10, minute=0)`).
 
-Point d'entrée Streamlit (~1050 lignes). Gère la session, le CSS global, la navigation et le routage vers toutes les pages.
-
-| Fonction / Section | Description |
-|--------------------|-------------|
-| `load_data()` | `@st.cache_data` — Charge `Telco-Customer-Churn.csv` ou génère 1000 clients synthétiques si absent |
-| `train_model(df)` | `@st.cache_resource` — Entraîne XGBoost sur les données démo |
-| `risk_gauge(score)` | Retourne `(fig, label, color, css_class)` — jauge Plotly Indicator tricolore |
-| `get_recommendations(score, tenure, charges)` | Retourne 3 recommandations contextuelles selon le niveau de risque |
-| `build_input_df(tenure, charges, contract, internet, security)` | Construit un DataFrame aligné sur `feature_names` pour le simulateur What-If |
-| `chatbot_response(question)` | Moteur de réponses basé sur mots-clés — retourne une string markdown |
-| `_to_excel(dataframe)` | Génère un fichier `.xlsx` formaté (xlsxwriter) — en-têtes colorés, largeur auto |
-| Section `🏠 Bienvenue` | Page Blank Slate (sans modèle) — 3 cartes étapes + bouton navigation |
-| Section `🏠 Overview` | KPIs + tableau 10 clients + export CSV + info dataset |
-| Section `📊 Visual Analytics` | 7 graphiques Plotly/Matplotlib/Seaborn |
-| Section `🔮 AI Prediction` | Prédiction manuelle/auto + jauge + recommandations |
-| Section `🌟 Future Scenarios` | Simulation impact prix/tenure sur la distribution de risque |
-| Section `⚡ Simulateur What-If` | Double jauge avant/après + delta + recommandations |
-| Section `🚨 Alertes Clients` | Tableau filtrable + export Excel + envoi rapport PDF |
-| Section `🤖 Assistant IA` | Chatbot avec historique session + questions rapides |
-| Section `📤 Importer mes données` | Délégation à `show_pipeline_page()` |
-| Section `🧠 Explainable AI` | Délégation à `show_shap_page()` |
-| Section `⏰ Rapports Planifiés` | Config scheduler + envoi manuel + historique |
-| Section `🏆 Programme de Fidélité` | Délégation à `show_loyalty_page()` |
-
-**Classes CSS globales injectées :**
-
-| Classe | Usage |
-|--------|-------|
-| `.main-header` | Bandeau dégradé violet en haut de page |
-| `.metric-container` | Carte KPI rose/rouge dégradée |
-| `.insight-card` | Carte bleu/cyan |
-| `.prediction-card` | Carte prédiction |
-| `.risk-high` | Fond rouge sombre + bordure rouge |
-| `.risk-medium` | Fond orange sombre + bordure orange |
-| `.risk-low` | Fond vert sombre + bordure verte |
-| `.section-card` | Carte générique fond sombre |
-| `.alert-box` | Encadré alerte fond rouge avec bordure gauche |
-| `.chat-user` | Bulle utilisateur alignée à droite |
-| `.chat-bot` | Bulle bot alignée à gauche |
-| `.secteur-badge` | Badge secteur sidebar |
-
----
-
-### `auth.py`
-
-Gestion complète de l'authentification. Dépend de `database.py`. Ne persiste aucun état lui-même.
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `hash_password` | `(password: str) → str` | Hash bcrypt avec sel aléatoire. Retourne chaîne UTF-8. |
-| `_check_password` | `(password, stored_hash, hash_type) → bool` | Vérifie selon `hash_type` : `'bcrypt'` → `bcrypt.checkpw()`, `'sha256'` → SHA256 hexdigest |
-| `load_users` | `() → dict` | Compatibilité `weekly_report_job.py` — délègue à `get_all_users()` |
-| `register_user` | `(email, password, company, secteur) → (bool, str)` | Crée un compte bcrypt. Retourne `(True, msg_succès)` ou `(False, msg_erreur)` |
-| `login_user` | `(email, password) → (bool, dict|str)` | Vérifie identifiants. Migration SHA256→bcrypt si besoin. Retourne `(True, {company, secteur, created_at})` ou `(False, erreur)` |
-| `show_auth_page` | `()` | Affiche la page Streamlit Login/Inscription avec 2 onglets et formulaires |
-
-**Migration transparente SHA256 → bcrypt :** Lors d'une connexion réussie avec un ancien compte SHA256, `update_user_hash()` est appelé automatiquement pour stocker le nouveau hash bcrypt. L'utilisateur ne voit rien.
-
----
-
-### `database.py`
-
-Couche d'accès SQLite pure — aucune dépendance vers les autres modules du projet. Initialisée automatiquement à l'import via `init_db()`.
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `get_connection` | `() → contextmanager` | Context manager SQLite avec WAL mode, row_factory, commit/rollback automatique |
-| `init_db` | `()` | `CREATE TABLE IF NOT EXISTS users` + `reward_primitives` — idempotent, appelé à l'import |
-| `get_user` | `(email: str) → dict | None` | `SELECT * FROM users WHERE email = ?` — retourne dict ou None |
-| `create_user` | `(email, password_hash, company, secteur, hash_type) → None` | `INSERT INTO users` — lève `ValueError` si email déjà utilisé |
-| `update_user_hash` | `(email, new_hash, new_type) → None` | `UPDATE users SET password_hash, hash_type` — migration bcrypt |
-| `get_all_users` | `() → dict` | Retourne tous les users sous forme `{email: {company, secteur, created_at}}` |
-| `user_exists` | `(email: str) → bool` | Alias de `get_user(email) is not None` |
-| `get_reward_primitives` | `(user_email: str) → list[dict]` | Retourne toutes les récompenses de l'utilisateur triées par `id` |
-| `create_reward_primitive` | `(user_email, label, action, cible, valeur, duree) → int` | Insère une récompense, retourne l'`id` auto-incrémenté |
-| `delete_reward_primitive` | `(primitive_id: int) → None` | Supprime la récompense identifiée par son `id` |
-
----
-
-### `data_pipeline.py`
-
-Pipeline ML complet : de l'upload CSV à l'entraînement XGBoost. Contient aussi `show_pipeline_page()` qui orchestre les 6 étapes Streamlit, et `triage_risque()` le moteur de triage statistique agnostique.
-
-#### Constante `SECTEUR_COLUMNS`
-
-Dictionnaire de configuration par secteur définissant `required` (colonnes requises), `target_hints` (noms possibles de la colonne cible), `description` (texte d'aide).
-
-#### Constante `GLOBAL_TARGET_SYNONYMS`
-
-Liste de 20+ synonymes universels pour la détection de la colonne cible, fusionnée avec les `target_hints` du secteur : `"churn"`, `"resiliation"`, `"résiliation"`, `"exited"`, `"status"`, `"attrition"`, `"churned"`, `"inactif"`, `"desinscription"`, etc.
-
-#### Fonctions
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `detect_columns` | `(df, secteur) → dict` | Détecte `target_col`, `numeric_cols`, `categorical_cols`, `ignored_cols`, `warnings`. Nettoie d'abord les espaces parasites des noms de colonnes. Fusionne `target_hints` secteur + `GLOBAL_TARGET_SYNONYMS`. Si aucune cible trouvée, renvoie un rapport avec `target_col=None` pour déclencher le fallback interactif. |
-| `clean_data` | `(df, detection_report) → (df_clean, cleaning_log)` | Supprime colonnes ignorées, impute numériques (médiane), encode catégorielles (one-hot), mappe cible (Yes/No → 1/0), renomme en `"Churn"`. |
-| `quality_report` | `(df_raw, df_clean, detection_report) → dict` | Score 0-100 avec pénalités : churn < 5% (−20), churn > 60% (−15), missing > 20% (−20), missing > 5% (−5), < 200 lignes (−30), < 500 lignes (−10), pas de cible (−40). |
-| `train_custom_model` | `(df_clean, user_email) → (model, metrics, error)` | Split stratifié 80/20, XGBoost avec `scale_pos_weight` auto, sauvegarde `.pkl` et `.csv`. Retourne `(None, None, msg_erreur)` si problème. |
-| `load_user_model` | `(user_email) → (model, features, df)` | Charge `model_[safe].pkl` et `data_[safe].csv`. Retourne `(None, None, None)` si absent. |
-| `triage_risque` | `(df_risque, df_full) → df` | Moteur de triage statistique (P75). Ajoute `Motif de Risque` et `Action Suggérée`. Agnostique au secteur. |
-| `show_pipeline_page` | `(user_email, secteur)` | Page Streamlit complète — orchestre les 6 étapes avec UI progressive. Gère le fallback interactif de sélection de colonne cible : si `detect_columns()` ne trouve pas de cible, liste les colonnes binaires disponibles et propose un `st.selectbox`. |
-
----
-
-### `shap_explainer.py`
-
-Module d'explainabilité SHAP pour XGBoost.
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `compute_shap_values` | `(_model, _X) → (shap_values, expected_value)` | `@st.cache_data` — `shap.TreeExplainer` + `.shap_values()`. Préfixe `_` pour exclure du cache key. |
-| `get_shap_explanation_text` | `(shap_vals, feature_names, top_n=3) → str` | Génère explication langage naturel via `LABEL_MAP`. Identifie top facteurs positifs et protecteurs. |
-| `show_shap_page` | `(model, df, feature_names)` | Page complète 4 vues : importance globale, impact signé, waterfall individuel, scatter charges/SHAP. |
-
-**`LABEL_MAP` :** Dictionnaire de 20+ entrées mappant noms techniques vers labels lisibles (ex: `"Contract_Month-to-month"` → `"le contrat mensuel"`).
-
-**4 vues détaillées :**
-
-| Vue | Type graphique | Description |
-|-----|----------------|-------------|
-| 1 | Bar horizontal | `mean(|SHAP|)` — 15 features les plus importantes |
-| 2 | Bar horizontal bicolore | `mean(SHAP)` signé — rouge si augmente churn, vert si réduit |
-| 3 | Waterfall individuel | `shap_values[client_idx]` — 12 features triées par impact absolu |
-| 4 | Scatter | `MonthlyCharges` × `SHAP(MonthlyCharges)` coloré par risque |
-
----
-
-### `email_reports.py`
-
-Génération PDF (ReportLab) et envoi email (SendGrid). Fallback local si SendGrid non configuré.
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `_safe` | `(v) → str` | Formate une valeur pour PDF (NaN → "-", float → 2 décimales) |
-| `_risk_label` | `(score: float) → str` | Texte du niveau de risque : "Risque élevé" / "Risque modéré" / "Risque faible" |
-| `prepare_scored_df` | `(df) → df` | Vérifie `ChurnProba` présente, ajoute `RiskLevel` si absent |
-| `generate_pdf_report` | `(df, company_name, sector, output_path, report_title) → str` | Génère PDF A4 : titre, KPIs (tableau), Top 10 clients à risque, actions recommandées. Retourne `output_path`. |
-| `_save_pdf_locally` | `(pdf_path, to_email) → str` | Fallback : copie dans `reports_archive/report_[safe_email]_[timestamp].pdf` |
-| `send_pdf_via_sendgrid` | `(to_email, subject, body_text, pdf_path, from_email, from_name) → (bool, str)` | Envoie via API SendGrid avec PDF en pièce jointe. 3 cas de fallback → sauvegarde locale. |
-
-**Structure du PDF généré :**
-1. En-tête (titre, entreprise, secteur, date de génération)
-2. Tableau KPIs (total clients, taux churn, risque élevé/modéré/faible)
-3. Tableau Top 10 clients (client, ancienneté, charges, total, score %, niveau)
-4. Actions recommandées (4 points)
-5. Pied de page "Généré automatiquement par RetainIQ"
-
----
-
-### `weekly_report_job.py`
-
-Job exécuté automatiquement chaque lundi à 8h00 (fuseau Europe/Paris).
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `send_weekly_reports` | `()` | Pour chaque utilisateur : charge modèle → calcule `ChurnProba` → génère PDF → envoie via SendGrid. Skip si pas de modèle/données. |
-
-**Flux d'exécution :**
-
-```
-load_users()           ← auth.py → database.py
-    ↓
-for each user:
-    load_user_model(email)   ← data_pipeline.py
-    predict_proba(X)         ← calcul ChurnProba si absent
-    generate_pdf_report()    ← email_reports.py
-    send_pdf_via_sendgrid()  ← email_reports.py (fallback local si erreur)
-```
-
-**Variables d'environnement requises :** `SENDER_EMAIL`, `SENDGRID_API_KEY`
-
----
-
-### `scheduler.py`
-
-Singleton APScheduler thread-safe. Persiste entre les reruns Streamlit car Python ne recharge pas les modules.
-
-| Variable globale | Type | Description |
-|-----------------|------|-------------|
-| `_scheduler` | `BackgroundScheduler | None` | Instance unique du scheduler |
-| `_lock` | `threading.Lock` | Protection thread-safe pour l'initialisation |
-| `run_history` | `list[dict]` | Historique des exécutions (max 50, ordre chronologique inverse) |
-| `next_run_time` | `datetime | None` | Prochaine exécution planifiée du job hebdomadaire |
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `_run_weekly_job` | `()` | Wrapper APScheduler : appelle `send_weekly_reports()`, logue durée/statut dans `run_history` |
-| `start_scheduler` | `(day_of_week, hour, minute) → BackgroundScheduler` | Démarre le scheduler si non actif. Enregistre 2 jobs : `weekly_report` et `loyalty_messages`. Fuseau : Europe/Paris. |
-| `stop_scheduler` | `()` | Arrête proprement via `shutdown(wait=False)` |
-| `get_status` | `() → dict` | Retourne `{running, next_run, job_count, history[:10]}` |
-| `trigger_now` | `()` | Lance `_run_weekly_job()` immédiatement (test manuel depuis le dashboard) |
-| `update_schedule` | `(day_of_week, hour, minute)` | `reschedule_job("weekly_report", ...)` sans redémarrage. Démarre si inactif. |
-| `_refresh_next_run` | `()` | Met à jour `next_run_time` depuis `_scheduler.get_job("weekly_report")` |
-
----
-
-### `loyalty_page.py`
-
-Page Streamlit complète du Programme de Fidélité. Gère l'enrichissement triage, les filtres de ciblage croisé, le catalogue de récompenses dynamique (SQLite), le déclenchement webhook et la configuration des campagnes.
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `_load_settings` | `(user_email) → dict` | Charge depuis `loyalty_settings.json` les paramètres de l'utilisateur. Merge avec `_DEFAULT_SETTINGS`. |
-| `_save_settings` | `(user_email, settings) → None` | Sauvegarde dans `loyalty_settings.json` au format `{email: settings}`. |
-| `_send_webhook` | `(url: str, payload: dict) → (bool, str)` | POST JSON vers `url` (timeout 10 s). Retourne `(True, "HTTP 200")` ou `(False, message_erreur)`. Rejette les URLs non-HTTP. |
-| `segment_clients` | `(df, secteur) → (cohorte_a, cohorte_b, champions)` | Retourne 3 DataFrames selon `SEGMENTATION_CONFIG`. Ajoute `Priorité` (A) et `Médaille` (B). |
-| `show_loyalty_page` | `(df, secteur, user_company, user_email)` | Page principale : KPIs, tableau de ciblage croisé, catalogue de récompenses dynamique, déclenchement campagne avec webhook, config. |
-| `_render_config_panel` | `(user_email, user_company, secteur)` | Panneau expander de 4 blocs (seuils, valeur, garde-fous, **webhook**) avec formulaire Streamlit. |
-
-**Paramètres par défaut `_DEFAULT_SETTINGS` :**
-
-| Paramètre | Valeur par défaut | Description |
-|-----------|------------------|-------------|
-| `seuil_urgence` | `0.65` | Seuil Cohorte A (65%) |
-| `tenure_min_b` | `12` | Ancienneté min Cohorte B |
-| `depense_min` | `0.0` | Dépense minimum |
-| `reward_type` | `"Pourcentage %"` | Type de récompense |
-| `reward_value` | `20.0` | Valeur de la récompense |
-| `email_subject` | Template avec balise `{client_nom}` | Objet du message |
-| `email_body` | Template complet | Corps du message |
-| `budget_max` | `5000.0` | Budget mensuel max |
-| `quota_mois` | `100` | Quota mensuel |
-| `periode_carence` | `3` | Mois entre deux récompenses |
-| `campagne_sauvetage` | `True` | Activation campagne A |
-| `campagne_fidelite` | `True` | Activation campagne B |
-| `webhook_url` | `""` | URL webhook de déclenchement campagne (vide = désactivé) |
-
----
-
-### `loyalty_config.py`
-
-Fichier de configuration pur — pas de code Streamlit, pas de dépendances externes.
-
-#### `REWARDS_CATALOG`
-
-Dictionnaire imbriqué `secteur → {sauvetage: [...], fidelite: [...], seuil_sauvetage, seuil_fidelite, tenure_fidelite, devise}`.
-
-| Secteur | Récompenses sauvetage (extrait) | Récompenses fidélité (extrait) |
-|---------|--------------------------------|-------------------------------|
-| 📱 Télécom | Pass Internet 5Go, -30% sur facture, gel 1 mois | Double/Triple points Club, surclassement, VIP |
-| 💪 Sport | Gel 1-2 mois, coaching gratuit, nutrition 1 mois | Pass invité, accès spa, cours illimités |
-| 🛍️ E-commerce | -15/-20% 48h, livraison express, cadeau surprise | Accès soldes anticipé, cashback 5%, badge VIP |
-| 🎓 EdTech | Gel compte 1 mois, -25% renouvellement, coaching | Certificat excellence, accès early bird, badge |
-| ☁️ SaaS B2B | Gel tarif 12 mois, audit offert, Premium 2 mois | Étude de cas, 2 licences gratuites, co-marketing |
-
-#### `GRATITUDE_MESSAGES`
-
-Templates par secteur × type (`anniversaire` / `mensuel`). Variables dynamiques : `{annees}`, `{tenure}`, `{reward}`.
-
-#### `SEGMENTATION_CONFIG`
+**Pipeline du job** (`loyalty_messages_job.py:190`) :
 
 ```python
-{
-    "champion_proba_max":   0.20,   # ChurnProba < 20% pour Champion
-    "champion_tenure_min":  12,     # Tenure >= 12 mois pour Champion
-    "sauvetage_proba_min":  0.50,   # ChurnProba > 50% pour Cohorte A
-    "fidelite_proba_max":   0.35,   # ChurnProba < 35% pour Cohorte B
+def send_loyalty_messages():
+    users = _load_users()   # get_all_users() depuis SQLite
+
+    for user_email, user_data in users.items():
+        secteur = user_data.get("secteur", "📱 Télécom")
+
+        # 1. Charger données + modèle
+        df, model, features = _load_user_data(user_email)
+        # data_{safe_email}.csv  +  model_{safe_email}.pkl
+
+        # 2. Calculer ChurnProba si absent, puis filtrer les Champions
+        champions = _filter_champions(df, model, features)
+        # Champions : ChurnProba < 0.20  ET  tenure >= 12
+
+        for i, (_, row) in enumerate(champions.iterrows()):
+            tenure = int(row.get('tenure', 0))
+
+            # 3. Choisir le type de message selon l'ancienneté
+            if tenure % 12 == 0 and tenure > 0:
+                type_msg = "anniversaire"   # multiple de 12 mois → anniversaire de contrat
+            else:
+                type_msg = "mensuel"        # sinon → reconnaissance mensuelle
+
+            # 4. Construire le message depuis loyalty_config.GRATITUDE_MESSAGES
+            subject, body = _build_message(i, tenure, secteur, type_msg)
+
+            # 5. Envoyer via Gmail SMTP (smtplib + SMTP_SSL port 465)
+            _send_gratitude_email(user_email, subject, body)
+```
+
+**Filtrage des champions** (`loyalty_messages_job.py:62`) :
+
+```python
+def _filter_champions(df, model, features):
+    if 'ChurnProba' not in df.columns and model is not None and features is not None:
+        X = df[[f for f in features if f in df.columns]]
+        df['ChurnProba'] = model.predict_proba(X)[:, 1]
+
+    champions = df[
+        (df['ChurnProba'] < 0.20) &
+        (df['tenure']     >= 12)
+    ].copy()
+    return champions
+```
+
+**Envoi Gmail SMTP** (`loyalty_messages_job.py:133`) :
+
+```python
+def _send_gratitude_email(to_email, subject, body_text):
+    msg = MIMEMultipart('alternative')
+    msg['From']    = f"{SENDER_NAME} <{GMAIL_ADDRESS}>"
+    msg['To']      = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+    msg.attach(MIMEText(html_body, 'html', 'utf-8'))   # template HTML avec branding RetainIQ
+
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        server.login(GMAIL_ADDRESS, GMAIL_PASSWORD)
+        server.sendmail(GMAIL_ADDRESS, to_email, msg.as_string())
+```
+
+Variables d'environnement requises (`.env`) :
+
+```
+GMAIL_ADDRESS=votre_adresse@gmail.com
+GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx   # Mot de passe d'application Google
+SENDER_NAME=RetainIQ
+```
+
+**Rapport de fin de job** — la fonction retourne un dict de statut :
+
+```python
+return {
+    "status":        "success" if not erreurs else "partial",
+    "total_sent":    total_sent,
+    "anniversaires": total_anniversaire,
+    "mensuels":      total_mensuel,
+    "erreurs":       erreurs,
+    "executed_at":   datetime.now().strftime("%d/%m/%Y %H:%M"),
 }
 ```
 
----
-
-### `loyalty_messages_job.py`
-
-Job mensuel (1er du mois à 10h00) d'envoi des messages de gratitude aux Champions.
-
-| Fonction | Signature | Description |
-|----------|-----------|-------------|
-| `_load_users` | `() → dict` | Délègue à `database.get_all_users()` |
-| `_load_user_data` | `(user_email) → (df, model, features)` | Charge `data_[safe].csv` et `model_[safe].pkl`. Retourne `(None, None, None)` si absent. |
-| `_filter_champions` | `(df, model, features) → df` | Calcule `ChurnProba` si absent, filtre `ChurnProba < 0.20` ET `tenure >= 12`. |
-| `_build_message` | `(client_idx, tenure, secteur, type_msg) → (subject, body)` | Choisit template `anniversaire` ou `mensuel` depuis `GRATITUDE_MESSAGES`. Sélectionne récompense par `client_idx % len(rewards)`. |
-| `_send_gratitude_email` | `(to_email, subject, body_text) → bool` | Gmail SMTP via `smtplib.SMTP_SSL('smtp.gmail.com', 465)`. Corps texte + HTML. Retourne `True` si succès ou si Gmail non configuré (simulation). |
-| `send_loyalty_messages` | `() → dict` | Job principal : itère tous les utilisateurs → champions → messages. Retourne `{status, total_sent, anniversaires, mensuels, erreurs, executed_at}`. |
-
-**Logique anniversaire :**
-```python
-if tenure % 12 == 0 and tenure > 0:
-    type_msg = "anniversaire"   # 12 mois, 24 mois, 36 mois...
-else:
-    type_msg = "mensuel"        # Reconnaissance mensuelle classique
-```
-
-**Format email HTML généré :** Fond sombre `#0A1628`, logo RetainIQ en vert `#02C39A`, corps avec bordure verte, pied de page daté automatiquement.
-
----
-
-## 13. Dictionnaire des Fonctions Core
-
-Cette section recense les fonctions principales de l'application, leur rôle métier exact et leurs contrats d'interface, afin de servir de référence pour la maintenance et les évolutions.
-
-### 13.1 Pipeline de données et Machine Learning
-
-| Fonction | Module | Rôle métier | Entrée | Sortie |
-|----------|--------|-------------|--------|--------|
-| `detect_columns` | `data_pipeline` | Inférer automatiquement la structure du dataset client | `(df: DataFrame, secteur: str)` | `dict` avec clés `target_col`, `numeric_cols`, `categorical_cols`, `ignored_cols`, `warnings` |
-| `clean_data` | `data_pipeline` | Normaliser le dataset pour l'entraînement ML | `(df, detection_report: dict)` | `(df_clean: DataFrame, cleaning_log: list[str])` |
-| `quality_report` | `data_pipeline` | Évaluer la fiabilité du dataset avant entraînement | `(df_raw, df_clean, detection_report)` | `dict` avec `score`, `issues`, `recommendations`, `churn_rate` |
-| `train_custom_model` | `data_pipeline` | Entraîner un modèle XGBoost personnalisé par entreprise | `(df_clean: DataFrame, user_email: str)` | `(model, metrics: dict, error: str\|None)` |
-| `load_user_model` | `data_pipeline` | Charger le modèle actif de l'utilisateur depuis le filesystem | `(user_email: str)` | `(model, features: list, df: DataFrame)` ou `(None, None, None)` |
-| `triage_risque` | `data_pipeline` | Attribuer un motif de risque et une action aux clients à haut risque | `(df_risque: DataFrame, df_full: DataFrame)` | `df` enrichi avec `Motif de Risque` et `Action Suggérée` |
-
-### 13.2 Authentification et gestion des utilisateurs
-
-| Fonction | Module | Rôle métier | Entrée | Sortie |
-|----------|--------|-------------|--------|--------|
-| `login_user` | `auth` | Authentifier un utilisateur et migrer son hash si SHA256 | `(email: str, password: str)` | `(True, {company, secteur, created_at})` ou `(False, erreur: str)` |
-| `register_user` | `auth` | Créer un nouveau compte avec hash bcrypt | `(email, password, company, secteur)` | `(bool, message: str)` |
-| `hash_password` | `auth` | Hacher un mot de passe en bcrypt | `(password: str)` | `hashed: str` |
-| `get_user` | `database` | Récupérer un utilisateur par email | `(email: str)` | `dict` ou `None` |
-| `get_all_users` | `database` | Lister tous les utilisateurs (pour les jobs planifiés) | `()` | `{email: {company, secteur, created_at}}` |
-
-### 13.3 Génération de rapports
-
-| Fonction | Module | Rôle métier | Entrée | Sortie |
-|----------|--------|-------------|--------|--------|
-| `generate_pdf_report` | `email_reports` | Produire un rapport PDF A4 structuré avec KPIs et Top 10 | `(df, company_name, sector, output_path, report_title)` | `output_path: str` |
-| `send_pdf_via_sendgrid` | `email_reports` | Envoyer le rapport PDF par email via l'API SendGrid | `(to_email, subject, body_text, pdf_path, from_email, from_name)` | `(bool, message: str)` |
-| `_to_excel` | `churn_prediction_dashboard` | Exporter les alertes clients en Excel formaté (xlsxwriter) | `(dataframe: DataFrame)` | `bytes` (contenu `.xlsx`) |
-
-### 13.4 Explainabilité
-
-| Fonction | Module | Rôle métier | Entrée | Sortie |
-|----------|--------|-------------|--------|--------|
-| `compute_shap_values` | `shap_explainer` | Calculer les valeurs SHAP via TreeExplainer (mise en cache) | `(_model, _X: DataFrame)` | `(shap_values: ndarray, expected_value: float)` |
-| `get_shap_explanation_text` | `shap_explainer` | Générer une explication en langage naturel des facteurs de risque | `(shap_vals, feature_names, top_n=3)` | `explication: str` |
-
-### 13.5 Fidélisation et automatisation
-
-| Fonction | Module | Rôle métier | Entrée | Sortie |
-|----------|--------|-------------|--------|--------|
-| `segment_clients` | `loyalty_page` | Classer tous les clients en 3 cohortes de fidélité | `(df, secteur: str)` | `(cohorte_a, cohorte_b, champions)` — 3 DataFrames |
-| `_load_settings` | `loyalty_page` | Charger les règles de campagne de l'utilisateur | `(user_email: str)` | `dict` (fusionné avec `_DEFAULT_SETTINGS`) |
-| `_send_webhook` | `loyalty_page` | Envoyer le payload de campagne en POST JSON vers une URL configurée | `(url: str, payload: dict)` | `(bool, message: str)` |
-| `get_reward_primitives` | `database` | Lister les récompenses de l'utilisateur depuis SQLite | `(user_email: str)` | `list[dict]` |
-| `create_reward_primitive` | `database` | Créer une récompense dans le catalogue SQLite | `(user_email, label, action, cible, valeur, duree)` | `int` (id créé) |
-| `delete_reward_primitive` | `database` | Supprimer une récompense du catalogue | `(primitive_id: int)` | `None` |
-| `send_loyalty_messages` | `loyalty_messages_job` | Envoyer les messages de gratitude mensuels aux Champions | `()` | `{status, total_sent, anniversaires, mensuels, erreurs, executed_at}` |
-| `send_weekly_reports` | `weekly_report_job` | Générer et envoyer les rapports PDF hebdomadaires | `()` | `None` (effets de bord : emails + PDF locaux) |
-| `start_scheduler` | `scheduler` | Initialiser le singleton APScheduler avec 2 jobs CRON | `(day_of_week, hour, minute)` | `BackgroundScheduler` |
-| `trigger_now` | `scheduler` | Déclencher manuellement le job hebdomadaire pour test | `()` | `None` |
-
----
-
-## 14. Pages du dashboard (toutes)
-
-| Page | Condition d'accès | Description |
-|------|-------------------|-------------|
-| `🏠 Bienvenue` | Sans modèle (Blank Slate) | Guide d'onboarding en 3 étapes, bouton vers import |
-| `📤 Importer mes données` | Toujours disponible | Pipeline CSV complet en 6 étapes |
-| `🏠 Overview` | Avec modèle | KPIs + tableau 10 clients + export |
-| `📊 Visual Analytics` | Avec modèle | 7 graphiques analytiques |
-| `🔮 AI Prediction` | Avec modèle | Prédiction manuelle ou auto avec jauge |
-| `🌟 Future Scenarios` | Avec modèle | Simulation impact prix/tenure |
-| `⚡ Simulateur What-If` | Avec modèle | Comparaison avant/après action |
-| `🚨 Alertes Clients` | Avec modèle | Filtrage clients à risque + export Excel |
-| `🤖 Assistant IA` | Avec modèle | Chatbot contextuel |
-| `🧠 Explainable AI` | Avec modèle | 4 vues SHAP |
-| `⏰ Rapports Planifiés` | Avec modèle | Config scheduler + historique |
-| `🏆 Programme de Fidélité` | Avec modèle | 3 cohortes + récompenses + config |
-
----
-
-## 15. Système de segmentation clients v2.0
-
-Le système classe automatiquement tous les clients en 4 groupes à partir de deux axes : **score de risque churn** (ChurnProba) et **ancienneté** (tenure).
-
-```
-ChurnProba
-    │
-100%├─────────────────────────────────────────────────────────
-    │              🚨 Cohorte A — SAUVETAGE
- 50%├───────────────────────────────────────────────────────── ← seuil_sauvetage
-    │                    📊 Autres
- 35%├───────────────────────────────────────────────────────── ← seuil_fidelite
-    │   📊 Autres              │        🏆 Cohorte B
- 20%├──────────────────────── ─ ─ ─ ─ ──────────────────────── ← champion_proba_max
-    │              🌟 Champions
-  0%└─────────────────────────────────────────────────────────── tenure
-         0m        12m        Q75         60m
-                   ↑                      ↑
-            champion_tenure_min      Légende (Cohorte B)
-```
-
-**Règles de priorité Cohorte A :**
-
-| Score | Priorité |
-|-------|----------|
-| ChurnProba > 80% | 🔴 Critique |
-| 65% < ChurnProba <= 80% | 🟠 Urgent |
-| 50% < ChurnProba <= 65% | 🟡 À suivre |
-
-**Médailles Cohorte B :**
-
-| Ancienneté | Médaille |
-|-----------|----------|
-| >= 60 mois | 🥇 Légende |
-| 36–59 mois | 🥈 Vétéran |
-| < 36 mois | 🥉 Fidèle |
-
----
-
-## 16. Catalogue de récompenses
-
-### 16.1 Catalogue statique par secteur (`loyalty_config.py`)
-
-Définit **5 secteurs × 2 types × 6 à 8 récompenses** chacun, soit 60+ récompenses préconfigurées adaptées au **marché marocain** (devise MAD). Ce catalogue sert de référence et de source pour le job de fidélité mensuel (`loyalty_messages_job.py`).
-
-### 16.2 Catalogue dynamique par utilisateur (SQLite)
-
-Chaque utilisateur peut créer son propre catalogue de récompenses personnalisées via l'UI (panneau « Gérer le Catalogue » dans la page Fidélité). Ces récompenses sont stockées dans la table `reward_primitives` et sont les seules proposées lors du déclenchement manuel d'une campagne. Structure d'une récompense : **Label** (identifiant unique) + 4 primitives (**Action**, **Cible**, **Valeur**, **Durée**).
-
-> **Note :** Les deux catalogues coexistent. Le catalogue statique alimente les jobs automatiques (Messages de Champions) ; le catalogue dynamique alimente les déclenchements manuels depuis le dashboard.
-
-Chaque secteur définit également :
-- `seuil_sauvetage` : `0.50` (universel)
-- `seuil_fidelite` : `0.35` (universel)
-- `tenure_fidelite` : ancienneté minimale pour la Cohorte B (6 mois E-commerce/EdTech, 12 mois Sport/SaaS B2B, 18 mois Télécom)
-- `devise` : `MAD`
-
-Les messages de gratitude (`GRATITUDE_MESSAGES`) sont personnalisés par secteur — ton "membre" pour le sport, "apprenant" pour EdTech, "partenaire" pour SaaS B2B, "client fidèle" pour E-commerce et Télécom.
-
----
-
-## 17. Scheduler — deux jobs automatiques
-
-| Job | ID | Déclencheur | Fonction | Description |
-|-----|----|-------------|----------|-------------|
-| Rapport hebdomadaire | `weekly_report` | Lundi 8h00 (Europe/Paris) | `_run_weekly_job()` → `send_weekly_reports()` | PDF + SendGrid pour chaque utilisateur |
-| Messages fidélité | `loyalty_messages` | 1er du mois 10h00 | `send_loyalty_messages()` | Gmail SMTP pour les Champions |
-
-**Tolérance misfire :** 3600 secondes (1 heure). Si l'application était éteinte au moment du déclenchement, le job s'exécutera dans l'heure suivant le redémarrage.
-
-**Fuseau horaire :** `Europe/Paris` (CET/CEST selon la saison).
-
-**Thread-safety :** Le scheduler est protégé par `threading.Lock` pour éviter les initialisations multiples lors des reruns Streamlit. Le flag `_scheduler_started` en session state empêche les appels redondants à `start_scheduler()`.
-
----
-
-## 18. Sécurité et Garde-Fous
-
-Cette section documente l'ensemble des mécanismes de contrôle d'intégrité mis en œuvre dans RetainIQ pour prévenir les erreurs opérationnelles, les données aberrantes et les déclenchements non maîtrisés.
-
-### 18.1 Recalcul Dynamique du Total Cumulé
-
-Chaque déclenchement de campagne est précédé d'une estimation du coût total en temps réel. Ce calcul est effectué côté serveur avant le rendu du bouton, ce qui empêche tout déclenchement sur la base d'une estimation périmée.
-
-**Formule de calcul selon le type de récompense :**
-
-```
-Pourcentage %  → coût_unitaire = mean(MonthlyCharges.clip(lower=0)) × reward_value / 100
-                  total_cumulé  = coût_unitaire × nb_clients_ciblés
-
-Montant fixe € → coût_unitaire = reward_value
-                  total_cumulé  = reward_value × nb_clients_ciblés
-
-En nature       → total_cumulé  = None  (non quantifiable monétairement)
-```
-
-Le `.clip(lower=0)` sur `MonthlyCharges` est un garde-fou contre les valeurs négatives aberrantes qui pourraient fausser la moyenne et sous-estimer le coût réel.
-
-**Comparaison au budget configurable :**
-
-```python
-depasse_budget = (
-    total_cumule is not None
-    and budget_max > 0
-    and total_cumule > budget_max
-)
-```
-
-Si `depasse_budget is True` → alerte visuelle (texte rouge) + **bouton de déclenchement désactivé** (`disabled=True`).
-
-### 18.2 Blocage des Campagnes Vides
-
-Le déclenchement d'une campagne sur une liste vide de clients (résultant de filtres trop restrictifs) est bloqué au niveau du composant Streamlit :
-
-```python
-campagne_bloquee = (nb_filtres == 0) or depasse_budget
-
-st.button(
-    "🚀 Déclencher la campagne",
-    disabled=campagne_bloquee,   # désactivé si vide OU budget dépassé
-    ...
-)
-```
-
-Lorsque la campagne est bloquée pour cause de liste vide, un message informatif contextuel guide l'utilisateur vers un ajustement de ses filtres, plutôt qu'un simple message d'erreur.
-
-### 18.3 Score de Qualité des Données (Pipeline ML)
-
-L'entraînement du modèle est **bloqué programmatiquement** (`return` anticipé) si le score de qualité du dataset est inférieur à 30/100 :
-
-```python
-if score < 30:
-    st.error("❌ La qualité des données est insuffisante (score < 30). ...")
-    return   # Blocage : aucun entraînement possible
-```
-
-Ce seuil protège contre les modèles entraînés sur des données manifestement corrompues (colonne cible manquante, dataset de moins de 200 lignes, ou déséquilibre de classes extrême).
-
-### 18.4 Validation de la Colonne Cible
-
-Si `detect_columns()` ne trouve aucune colonne cible, le pipeline déclenche un **fallback interactif** au lieu de bloquer :
-
-```python
-if not detection["target_col"]:
-    binary_cols = [col for col in df_raw.columns if df_raw[col].dropna().nunique() == 2]
-    if not binary_cols:
-        st.error("❌ Votre fichier ne contient aucune donnée binaire (ex: 0/1, Oui/Non).")
-        return
-    st.warning("⚠️ Aucune colonne cible n'a pu être détectée automatiquement.")
-    chosen_col = st.selectbox("🎯 Quelle colonne indique le départ du client ?", binary_cols)
-    df_raw = df_raw.rename(columns={chosen_col: "Churn"})
-    detection = detect_columns(df_raw, secteur)   # relance avec la colonne renommée
-```
-
-Ce garde-fou permet de traiter n'importe quel CSV dont la colonne cible est nommée hors-nomenclature, sans rejeter le dataset.
-
-### 18.5 Sécurité de l'Authentification
-
-| Mécanisme | Implémentation |
-|-----------|---------------|
-| Stockage des mots de passe | bcrypt avec sel aléatoire (`bcrypt.gensalt()`) — jamais en clair |
-| Migration transparente | SHA256 → bcrypt à la première connexion réussie, sans intervention utilisateur |
-| Isolation des données | Chaque modèle et dataset est nommé `model_[email_safe].pkl` — isolation par utilisateur |
-| Session Streamlit | `logged_in = False` → arrêt immédiat (`st.stop()`) avant tout affichage |
-| WAL SQLite | `PRAGMA journal_mode=WAL` — protection contre les corruptions en écriture concurrente |
-
-### 18.6 Robustesse des Jobs Planifiés
-
-| Risque | Garde-fou |
-|--------|-----------|
-| Job déclenché alors que l'app était éteinte | Tolérance misfire de 3600 s — le job s'exécute au redémarrage |
-| Modèle absent pour un utilisateur | `load_user_model()` retourne `(None, None, None)` → skip silencieux |
-| Gmail non configuré | `_send_gratitude_email()` simule le succès et logue en console — pas d'exception levée |
-| SendGrid non configuré | Fallback automatique vers `reports_archive/` via `_save_pdf_locally()` |
-| Données vides pour un utilisateur | `if df is None` → `continue` dans la boucle du job |
-
----
-
-## 19. Limites connues et pistes d'amélioration
-
-### Limites actuelles
-
-- **Aucun admin UI :** La gestion des utilisateurs nécessite des requêtes SQLite directes (`sqlite3 retainiq.db`)
-- **Fichiers modèles non chiffrés :** Les `model_[email].pkl` sont en clair sur le filesystem
-- **Messages de fidélité envoyés à l'email de l'entreprise :** En production, ils devraient être envoyés aux emails des clients finaux
-- **Chatbot basé sur règles :** Pas de LLM — réponses limitées aux mots-clés prédéfinis
-- **SHAP en mémoire :** Le TreeExplainer charge tout le dataset en RAM (problème si dataset > 100 000 lignes)
-- **`loyalty_settings.json` :** Fichier JSON plat partagé — non adapté à un déploiement multi-utilisateurs à haute concurrence (les `reward_primitives` elles sont déjà en SQLite)
-- **Pas de multitenancy strict :** Les fichiers modèles sont nommés par email mais dans le répertoire courant
-- **Pas de HTTPS natif :** Streamlit Cloud ou reverse proxy (nginx) requis en production
-- **Webhook sans authentification :** Le POST JSON vers le webhook n'inclut pas de signature HMAC — à sécuriser en production
-
-### Pistes d'amélioration (v3.0)
-
-- Intégration d'un LLM (Claude API via Anthropic SDK) pour le chatbot contextuel avec mémoire de conversation
-- Base de données clients réelle (PostgreSQL) pour les emails des clients finaux
-- Interface admin pour la gestion des utilisateurs et des modèles
-- Chiffrement des fichiers `.pkl` au repos (Fernet / AES-256)
-- Tests unitaires et d'intégration (pytest) avec CI/CD GitHub Actions
-- Déploiement Docker avec Traefik pour le HTTPS
-- Alertes Slack/Teams en plus des emails via webhooks
-- Dashboard d'A/B testing pour les campagnes de rétention
-- Intégration CRM (Salesforce, HubSpot) via API REST — branchement natif du payload JSON simulé
-- API REST (FastAPI) pour découpler le frontend Streamlit du backend ML
-- Sécurisation du webhook (signature HMAC-SHA256, liste blanche d'IPs) pour la mise en production
-- Export Excel enrichi avec graphiques intégrés dans la feuille (xlsxwriter `add_chart()`)
-
----
-
-> **RetainIQ v2.1** — Projet Industriel 2024-2025
-> Stack : XGBoost · Streamlit · APScheduler · SHAP · SendGrid · Gmail SMTP · SQLite · bcrypt · ReportLab · xlsxwriter
-> Architecture : IA Prédictive + IA Prescriptive · API-First · Webhook HTTP · Catalogue Dynamique · Multi-secteur · Multi-tenant
-> *De la prédiction du churn à l'action en boucle fermée — en un seul déploiement.*
+> **Mode dégradé :** si `GMAIL_ADDRESS` ou `GMAIL_APP_PASSWORD` sont absents, `_send_gratitude_email()` simule le succès (`return True`) sans erreur fatale, permettant de tester le job sans compte Gmail configuré.

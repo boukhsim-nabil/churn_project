@@ -1321,7 +1321,7 @@ elif section == "🤖 Assistant IA":
         st.session_state.chat_history = []
         st.rerun()
 
-    # Main chat input (always pinned to bottom by Streamlit)
+    # Main chat input 
     user_input = st.chat_input("Posez votre question à l'Assistant IA…")
     if user_input and user_input.strip():
         st.session_state.chat_history.append({"role": "user", "text": user_input})
