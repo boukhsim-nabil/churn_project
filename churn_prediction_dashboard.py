@@ -1634,10 +1634,12 @@ elif section == "📧 Campagnes & Rapports":
                             f"charges {charges_disp}, score de risque de résiliation {score_val*100:.0f}%. "
                             f"L'objectif est de le fidéliser avec une offre personnalisée attractive."
                         )
-                        st.session_state["crm_draft_relance"] = gemini_draft_email(
+                        _draft = gemini_draft_email(
                             context=_ctx,
                             email_type="relance de rétention personnalisée",
                         )
+                        st.session_state["crm_draft_relance"] = _draft
+                        st.session_state["t2_body"] = _draft
 
                 _t2_body = st.text_area(
                     "Corps de l'email (modifiable avant envoi)",
@@ -1779,10 +1781,12 @@ elif section == "📧 Campagnes & Rapports":
                         f"Ancienneté filtrée : {str(_ten_range) if _ten_range else 'toutes'}. "
                         f"Objectif : fidéliser avec un message engageant. Entreprise : {user_company}."
                     )
-                    st.session_state["crm_draft_groupe"] = gemini_draft_email(
+                    _draft_g = gemini_draft_email(
                         context=_ctx_group,
                         email_type="relance groupée de rétention",
                     )
+                    st.session_state["crm_draft_groupe"] = _draft_g
+                    st.session_state["t2g_body"] = _draft_g
 
             _t2g_body = st.text_area(
                 "Corps de l'email (modifiable avant envoi)",
@@ -1928,10 +1932,12 @@ elif section == "📧 Campagnes & Rapports":
                     f"Segment cible : {target_segment} ({n_segment} clients). "
                     f"Entreprise : {user_company}."
                 )
-                st.session_state["crm_draft_occasion"] = gemini_draft_email(
+                _draft_o = gemini_draft_email(
                     context=_ctx,
                     email_type="email de vœux ou promotion pour une occasion spéciale",
                 )
+                st.session_state["crm_draft_occasion"] = _draft_o
+                st.session_state["t3_body"] = _draft_o
 
         _t3_body = st.text_area(
             "Corps de l'email (modifiable avant envoi)",
